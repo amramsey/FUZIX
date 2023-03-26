@@ -31,11 +31,14 @@ extern char *strncpy(char *dest, const char *src, size_t n);
 extern char *strchr(const char *s, int c);
 extern void *memset(void *dest, int c, size_t n);
 #endif
+
+
 /* There is no compiler optimized inline memmove */
 extern void *memmove(void *dest, const void *src, size_t n);
+extern int memcmp(const void * a, const void *b, size_t n);
 extern int strcmp(const char *, const char *);
 
-extern int16_t strlen(const char *p);
+extern size_t strlen(const char *p);
 
 #define	staticfast	static/* User's structure for times() system call */
 typedef unsigned long clock_t;

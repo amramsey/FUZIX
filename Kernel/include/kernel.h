@@ -126,7 +126,6 @@ From UZI by Doug Braun and UZI280 by Stefan Nitschke.
 #define NSIGS	  32      /* Number of signals <= 32 */
 #define ROOTINODE 1       /* Inode # of / for all mounted filesystems. */
 #define CMAGIC    24721   /* Random number for cinode c_magic */
-#define SMOUNTED  12742   /* Magic number to specify mounted filesystem */
 
 #define OS_BANK 0
 #define NO_DEVICE (0xFFFFU)
@@ -169,13 +168,15 @@ typedef uint32_t uoff_t;	/* Internal use so we can keep the compiler happy */
 typedef uint16_t blkno_t;    /* Can have 65536 512-byte blocks in filesystem */
 #define NULLBLK ((blkno_t)-1)
 
-#define BLKSIZE		512
-#define BLKSHIFT	9
-#define BLKMASK		511
-#define BLKOVERSIZE32	0xFE	/* Bits 25+ mean we exceeded the file size */
+#if (BLKSIZE == 400)
+#include "blk400.h"
+#endif
 
-/* Help the 8bit compilers out by preventing any 32bit promotions */
-#define BLKOFF(x)	(((uint16_t)(x)) & BLKMASK)
+#ifndef BLKSIZE
+#include "blk512.h"
+#endif
+
+#define BLKOVERSIZE32	0xFE	/* Bits 25+ mean we exceeded the file size */
 
 /* State of the block. We have some free bits here if we need them */
 #define BF_FREE		0
@@ -204,9 +205,9 @@ typedef struct blkbuf {
 #define blkfromk(kaddr,buf, off,len) \
     memcpy((buf)->__bf_data + (off), (kaddr), (len))
 #define blktou(uaddr,buf,off,len) \
-    uput((buf)->__bf_data + (off), (uaddr), (len))
+    _uput((buf)->__bf_data + (off), (uaddr), (len))
 #define blkfromu(uaddr,buf,off,len) \
-    uget((uaddr),(buf)->__bf_data + (off), (len))
+    _uget((uaddr),(buf)->__bf_data + (off), (len))
 #define blkptr(buf, off, len)	((void *)((buf)->__bf_data + (off)))
 #define blkzero(buf)		memset(buf->__bf_data, 0, BLKSIZE)
 #else
@@ -304,8 +305,6 @@ typedef struct cinode {
 #define NULLINODE ((inoptr)NULL)
 #define NULLINOPTR ((inoptr*)NULL)
 
-#define FILENAME_LEN	30
-#define DIR_LEN		32
 typedef struct direct {
     uint16_t   d_ino;
     uint8_t    d_name[FILENAME_LEN];
@@ -500,6 +499,9 @@ typedef struct p_tab {
     uint8_t	p_nice;
     uint8_t	p_event;	/* Events */
     usize_t	p_top;		/* Copy of u_top */
+#ifdef CONFIG_UDATA_TEXTTOP
+    usize_t p_texttop;  /* Copy of u_texttop */
+#endif
 #ifdef CONFIG_LEVEL_2
     uint16_t	p_session;
 #endif
@@ -544,7 +546,7 @@ typedef struct u_data {
     void *      u_isp;          /* Value of initial sp (argv) */
     usize_t	u_top;		/* Top of memory for this task */
     uaddr_t	u_break;	/* Top of data space */
-    uaddr_t	u_codebase;	/* 32bit platform base pointers */
+    uaddr_t	u_codebase;	/* Platform base pointers */
     int     (*u_sigvec[NSIGS])(int);   /* Array of signal vectors */
 
     uint8_t *   u_base;         /* Source or dest for I/O */
@@ -580,7 +582,12 @@ typedef struct u_data {
     usize_t	u_done;		/* Counter for driver methods */
 
 #ifdef CONFIG_UDATA_TEXTTOP
-    uaddr_t u_texttop;  /* Top of binary text (used for I/D systems) */
+    uaddr_t u_texttop;		/* Top of binary text (used for I/D systems) */
+#endif
+   /* TODO: A specific define for "32bit" */
+#if defined(__mc68000__) || defined(__ns32k__) || defined(__ARM_ARCH_7EM__) || defined(__riscv)
+    uaddr_t u_database;		/* data base for systems with separate code/data
+				   blocks. FIXME - sort this out in the usermode hdr */
 #endif
 #ifdef CONFIG_NET
     struct udata_net u_net;
@@ -617,7 +624,7 @@ struct s_argblk {
     int a_argc;
     int a_arglen;
     int a_envc;
-    uint8_t a_buf[512-3*sizeof(int)];
+    uint8_t a_buf[BLKSIZE-3*sizeof(int)];
 };
 
 /* Time is passed as 2 x 32bit values for cleanness and portability */
@@ -823,6 +830,7 @@ typedef struct {
  *			0710	Hook SWI2 etc for emulators
  *	0718-1F		680x0
  *
+ *	07Dx		Module loader
  *	07Ex		Platform specific (check 07F0 before using as will
  *			be duplicated per platform)
  *	07Fx		Generic
@@ -854,9 +862,7 @@ struct selmap {
 #define SELECT_OUT		2
 #define SELECT_EX		4
 
-#ifdef __GNUC__
-#define NORETURN __attribute__((__noreturn__))
-#else
+#ifndef NORETURN
 #define NORETURN
 #endif
 
@@ -871,49 +877,61 @@ extern bool validdev(uint16_t dev);
 /* usermem.c */
 
 /* This option can only be used on a CPU without alignment rules */
+/* For very very small machines remove all the address validation checks and thus
+   (with a passable compiler) all the supporting error logic. */
 #ifdef CONFIG_LEVEL_0
-#define valaddr(a,b)	(1)
-#define uget(a,b,c)	(memcpy(b,a,c) && 0)
-#define uput(a,b,c)	(memcpy(b,a,c) && 0)
-#define ugetc(a)	(*(uint8_t *)(a))
-#define _ugetc(a)	(*(uint8_t *)(a))
-#define ugetw(a)	(*(uint16_t *)(a))
-#define ugetl(a)	(*(uint32_t *)(a))
-#define uputc(v, p)	((*(uint8_t*)(p) = (v)) && 0)
-#define uputw(v, p)	((*(uint16_t*)(p) = (v)) && 0)
-#define uputl(v, p)	((*(uint32_t*)(p) = (v)) && 0)
-#define uzero(a,b)	(memset(a,0,b) && 0)
+/* Shortcut all the validation */
+#define valaddr(a,b,c)	(b)
+#define valaddr_r(a,b)	(b)
+#define valaddr_w(a,b)	(b)
+#define uget(a,b,c)	(_uget(a, b, c) * 0)
+#define uput(a,b,c)	(_uput(a, b, c) * 0)
+#define ugetc(a)	_ugetc(a)
+#define ugetw(a)	_ugetw(a)
+#define ugetl(a)	_ugetl(a)
+#define uputc(v, p)	_uputc(v, p)
+#define uputw(v, p)	_uputw(v, p)
+#define uputl(v, p)	_uputl(v, p)
+#define uzero(a,b)	(_uzero(a, b) * 0)
 #else
-extern usize_t valaddr(const uint8_t *base, usize_t size);
+extern usize_t valaddr(const uint8_t *base, usize_t size, uint_fast8_t is_write);
+extern usize_t valaddr_r(const uint8_t *base, usize_t size);
+extern usize_t valaddr_w(const uint8_t *base, usize_t size);
 extern int uget(const void *userspace_source, void *dest, usize_t count);
+extern int uput (const void *source,   void *userspace_dest, usize_t count);
 extern int16_t  ugetc(const void *userspace_source);
 extern uint16_t ugetw(const void *userspace_source);
-extern int uput (const void *source,   void *userspace_dest, usize_t count);
 extern int uputc(uint16_t value,  void *userspace_dest);	/* u16_t so we don't get wacky 8bit stack games */
 extern int uputw(uint16_t value, void *userspace_dest);
+extern int uputl(uint32_t value, void *userspace_dest);
 extern int uzero(void *userspace_dest, usize_t count);
 #endif
 
-/* usermem.c or usermem_std.s */
-extern int _uget(const uint8_t *user, uint8_t *dst, usize_t count);
-extern int _uput(const uint8_t *source, uint8_t *user, usize_t count);
-extern int _uzero(uint8_t *user, usize_t count);
 
 /* This option can only be used on a CPU without alignment rules */
-#if defined CONFIG_USERMEM_DIRECT
+/* Set this for a system that can directly access all of user memory without any
+   remapping or risk of traps or errors (or fix them up...) */
+#if defined (CONFIG_USERMEM_DIRECT) || defined(CONFIG_LEVEL_0)
 #define _ugetc(p) (*(uint8_t*)(p))
 #define _ugetw(p) (*(uint16_t*)(p))
 #define _ugetl(p) (*(uint32_t*)(p))
 #define _uputc(v, p) ((*(uint8_t*)(p) = (v)), 0)
 #define _uputw(v, p) ((*(uint16_t*)(p) = (v)), 0)
 #define _uputl(v, p) ((*(uint32_t*)(p) = (v)), 0)
+#define _uget(a,b,c) (memcpy(b,a,c) && 0)
+#define _uput(a,b,c) (memcpy(b,a,c) && 0)
+#define _uzero(a,b)  (memset(a,0,b) && 0)
 #else
+/* usermem.c or usermem_std.s */
 extern int16_t _ugetc(const uint8_t *user) __fastcall;
 extern uint16_t _ugetw(const uint16_t *user) __fastcall;
 extern uint32_t _ugetl(const uint32_t *user) __fastcall;
 extern int _uputc(uint16_t value, uint8_t *user);
 extern int _uputw(uint16_t value, uint16_t *user);
 extern int _uputl(uint32_t value, uint32_t *uaddr);
+extern int _uget(const uint8_t *user, uint8_t *dst, usize_t count);
+extern int _uput(const uint8_t *source, uint8_t *user, usize_t count);
+extern int _uzero(uint8_t *user, usize_t count);
 #endif
 
 /* platform/tricks.s */
@@ -988,6 +1006,7 @@ extern int_fast8_t uf_alloc_n(uint_fast8_t n);
 #define i_ref(ino) ((ino)->c_refs++, (ino))
 //extern void i_ref(inoptr ino);
 extern void i_deref(inoptr ino);
+extern void corrupt_fs(uint16_t devno);
 extern void wr_inode(inoptr ino);
 extern bool isdevice(inoptr ino);
 extern int f_trunc(inoptr ino);
@@ -1144,35 +1163,47 @@ struct coremem {
 extern uint8_t write_core_image(void);
 extern void coredump_memory(inoptr ino, uaddr_t base, usize_t len, uint16_t flags);
 /* Provided by the memory manager */
-extern void coredump_memory_image(inoptr ino);
+extern void coredump_image(inoptr ino);
+
+/* Filesystem block support */
+
+extern blkno_t inode_blocks(inoptr i);
+extern uint_fast8_t breadi(uint16_t dev, uint16_t ino, void *ptr);
+extern uint_fast8_t bwritei(inoptr ino);
+extern blkno_t bmap(inoptr ip, blkno_t bn, unsigned int rwflg);
 
 /* Platform interfaces */
 
-#ifndef platform_discard
-extern void platform_discard(void);
+#ifndef plt_discard
+extern void plt_discard(void);
 #endif
-#ifndef platform_copyright
-extern void platform_copyright(void);
+#ifndef plt_copyright
+extern void plt_copyright(void);
 #endif
-extern void platform_idle(void);
-extern uint_fast8_t platform_rtc_secs(void);
-extern int platform_rtc_read(void);
-extern int platform_rtc_write(void);
-extern int platform_rtc_ioctl(uarg_t request, char *data);
-extern void platform_reboot(void);
-extern void platform_monitor(void);
-extern uint_fast8_t platform_param(char *p);
-extern void platform_switchout(void);
-extern void platform_interrupt(void);
-extern uint_fast8_t platform_suspend(void);
-extern uint_fast8_t platform_udata_set(ptptr p);
+extern void plt_idle(void);
+extern uint_fast8_t plt_rtc_secs(void);
+extern int plt_rtc_read(void);
+extern int plt_rtc_write(void);
+extern int plt_rtc_ioctl(uarg_t request, char *data);
+extern void plt_reboot(void);
+extern void plt_monitor(void);
+extern uint_fast8_t plt_param(char *p);
+extern void plt_switchout(void);
+extern void plt_interrupt(void);
+extern uint_fast8_t plt_suspend(void);
+extern uint_fast8_t plt_udata_set(ptptr p);
 
-extern void platform_swap_found(uint_fast8_t part, uint_fast8_t letter);
-extern uint_fast8_t platform_canswapon(uint16_t devno);
+extern void plt_swap_found(uint_fast8_t part, uint_fast8_t letter);
+extern uint_fast8_t plt_canswapon(uint16_t devno);
 
-extern int platform_dev_ioctl(uarg_t request, char *data);
+extern int plt_dev_ioctl(uarg_t request, char *data);
 
-extern uint8_t platform_tick_present;
+extern void plt_udma_kill(ptptr p);
+extern void plt_udma_sync(ptptr p);
+
+extern unsigned plt_relocate(struct exec *bf);
+
+extern uint8_t plt_tick_present;
 
 #ifndef CONFIG_INLINE_IRQ
 extern irqflags_t __hard_di(void);

@@ -19,8 +19,8 @@
 #define MAP_SIZE	0xF000U
 
 /* Networking (not usable yet but for debug/development) */
-#define CONFIG_NET
-#define CONFIG_NET_NATIVE
+#undef CONFIG_NET
+#undef CONFIG_NET_NATIVE
 /* Read processes and big I/O direct into process space */
 #define CONFIG_LARGE_IO_DIRECT(x)	1
 
@@ -54,7 +54,7 @@
 #define NBUFS    6	  /* Number of block buffers */
 #define NMOUNTS	 4	  /* Number of mounts at a time */
 
-#define platform_discard()
-#define platform_copyright()
+#define plt_discard()
+#define plt_copyright()
 
 #define BOOTDEVICENNAMES "hd#,fd#"

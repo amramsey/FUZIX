@@ -8,15 +8,16 @@
 	.globl map_process
 	.globl map_process_always
 	.globl map_kernel_di
+	.globl map_kernel_restore
 	.globl map_process_di
 	.globl map_process_always_di
 	.globl map_save_kernel
 	.globl map_restore
 	.globl map_for_swap
 	.globl map_buffers
-	.globl platform_interrupt_all
-	.globl _platform_reboot
-	.globl _platform_monitor
+	.globl plt_interrupt_all
+	.globl _plt_reboot
+	.globl _plt_monitor
 	.globl _bufpool
 	.globl _int_disabled
 
@@ -210,8 +211,8 @@ sio_setup:
 ;=========================================================================
         .area _COMMONMEM
 
-_platform_monitor:
-_platform_reboot:
+_plt_monitor:
+_plt_reboot:
 	; FIXME: we can flip the CS lines around and also generate a reset
 	; on the bus too.
 	di
@@ -220,7 +221,7 @@ _platform_reboot:
 _int_disabled:
 	.db 1
 
-platform_interrupt_all:
+plt_interrupt_all:
 	ret
 
 ; install interrupt vectors - no-op as in common low space
@@ -283,6 +284,7 @@ map_process_always_di:
 map_buffers:
 map_kernel:
 map_kernel_di:
+map_kernel_restore:
 	push af
 	in a,(0xEF)
 	and #0xFD		; CS1 disable for kernel

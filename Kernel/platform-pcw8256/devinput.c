@@ -44,7 +44,7 @@ static uint8_t delta(uint8_t old, uint8_t new)
         
 /* First cut - we really should do the mouse delta accumulation in the
    vblank interrupt and just ouput the sum here */
-int platform_input_read(uint8_t *slot)
+int plt_input_read(uint8_t *slot)
 {
     uint8_t r;
     if (remq(&kqueue, &r)) {
@@ -54,22 +54,22 @@ int platform_input_read(uint8_t *slot)
 	return 2;
     }
     if (has_amx) {
-        *slot++ = MOUSE_REL|BUTTON(3);
+        *slot++ = MOUSE_REL;
         r = amx_v;
+        *slot++ = ~amx_button & 7;
         *slot++ = (r >> 4) - (r & 0x0F);
         *slot++ = (r & 0x0F) - (r >> 4);
-        *slot++ = ~amx_button & 7;
         return 4;
     }
     if (has_kemp) {
         uint8_t kx = kemp_x;
         uint8_t ky = kemp_y;            
-        *slot++ = MOUSE_REL|BUTTONS(2);
+        *slot++ = MOUSE_REL;
+        *slot++ = ~kemp_button & 3;
         *slot++ = delta(okx, kx);
         *slot++ = delta(oky, ky);
         /* Need to think about this eg 0xF0 -> 0x0F is a positive move
            of 0x1F while 0x0F->0xF0 is a negative move of 0x1F */
-        *slot++ = ~kemp_button & 3;
         oky = ky;
         okx = kx;
         return 4;
@@ -98,7 +98,7 @@ int platform_input_read(uint8_t *slot)
 
 /* On an IRQ based system this routine is internally responsible for avoiding
    races between event wakeup and sleep */
-void platform_input_wait(void)
+void plt_input_wait(void)
 {
     /* Mice need polling every vblank, for a typical tty only machine however
        we can do less wakeups. Really we need to move the mouse to the timer
@@ -109,14 +109,14 @@ void platform_input_wait(void)
 	psleep(&kqueue);
 }
 
-int platform_input_write(uint8_t flag)
+int plt_input_write(uint8_t flag)
 {
     flag;
     udata.u_error = EINVAL;
     return -1;
 }
 
-uint8_t platform_input_init(void)
+uint8_t plt_input_init(void)
 {
     /* Kempston or AMS mice - don't support both at once */
     if (kemp_x != 0xFF || kemp_y != 0xFF || kemp_button != 0xFF)

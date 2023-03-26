@@ -16,6 +16,7 @@ kdata.rel
 platform-sc108/devices.rel
 devio.rel
 filesys.rel
+blk512.rel
 process.rel
 inode.rel
 syscall_exec.rel
@@ -41,5 +42,5 @@ platform-sc108/ide.rel
 platform-sc108/usermem.rel
 platform-sc108/ds1302.rel
 platform-sc108/ds1302_discard.rel
-platform-sc108/ds1302_rc2014.rel
+platform-sc108/ds1302_rcbus.rel
 -e

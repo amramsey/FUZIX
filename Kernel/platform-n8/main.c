@@ -4,6 +4,9 @@
 #include <devtty.h>
 #include "config.h"
 #include <z180.h>
+#include <ps2kbd.h>
+#include <ps2mouse.h>
+#include <devfd.h>
 #include "n8.h"
 
 uint16_t ramtop = PROGTOP;
@@ -12,7 +15,7 @@ extern unsigned char irqvector;
 
 struct blkbuf *bufpool_end = bufpool + NBUFS; /* minimal for boot -- expanded after we're done with _DISCARD */
 
-void platform_discard(void)
+void plt_discard(void)
 {
     while(bufpool_end < (struct blkbuf*)(KERNTOP - sizeof(struct blkbuf))){
         memset(bufpool_end, 0, sizeof(struct blkbuf));
@@ -29,13 +32,13 @@ void z180_timer_interrupt(void)
     unsigned char a;
 
     /* we have to read both of these registers in order to reset the timer */
-    a = TIME_TMDR0L;
     a = TIME_TCR;
+    a = TIME_TMDR0L;
 
     timer_interrupt();
 }
 
-void platform_idle(void)
+void plt_idle(void)
 {
     /* Let's go to sleep while we wait for something to interrupt us */
     /* Probably want to change this once we have PS/2 support in */
@@ -44,12 +47,31 @@ void platform_idle(void)
     __endasm;
 }
 
-void platform_interrupt(void)
+void plt_interrupt(void)
 {
+    static uint8_t c;
     uint8_t dummy;
     switch(irqvector){
         case Z180_INT_TIMER0:
             z180_timer_interrupt(); 
+            if (!ps2busy) {
+                int16_t n;
+                if (kbd_open) {
+                    n = ps2kbd_get();
+                    if (n >= 0)
+                        ps2kbd_byte(n);
+                }
+                if (ps2m_open) {
+                    n = ps2mouse_get();
+                    if (n >= 0)
+                        ps2mouse_byte(n);
+                }
+            }
+#ifdef CONFIG_FLOPPY
+            c ^= 1;
+            if (c)
+                fd_tick();
+#endif
             return;
         case Z180_INT_ASCI0:
             tty_pollirq_asci0();

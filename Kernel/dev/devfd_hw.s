@@ -17,7 +17,7 @@ CPU_Z180	.equ	Z80_TYPE-2
         .globl map_kernel_restore
         .globl map_process_always
         .globl _devfd_dtbl
-	.globl _platform_idle
+	.globl _plt_idle
 
         ; exported sybols
         .globl _devfd_init
@@ -436,6 +436,7 @@ SEEKX:  POP     BC              ; Restore Regs
 
 FdcDn:  PUSH    HL              ; Don't alter regs
 	PUSH	DE
+	LD	DE,#0x2000	; So we time out eventually
 FdcDn0:	CALL    WRdy1
 	DEC	DE
 	LD	A,D
@@ -468,7 +469,8 @@ FdcNotDn:
 ;
 ; Enter : None
 ; Return: None
-; Uses  : HL.  Remaining Registers Preserved/Not Affected
+; Uses  : HL.
+;         AF, BC, DE, IY guaranteed to be preserved. Note external call.
 
 Motor:  PUSH    AF              ; Save Regs
         PUSH    BC
@@ -505,9 +507,11 @@ MtrSet: ; now B contains the relevant motor bit we need to be set in the FDC DOR
 ;	#2 The timers are set in 1/20ths but it's not clear everyone is
 ;	using 1/20ths for the IRQ call (See p112)
 ;
-MotoLp:	PUSH	DE
-	CALL	_platform_idle
+MotoLp:	PUSH	IY
+	PUSH	DE
+	CALL	_plt_idle
 	POP	DE
+	POP	IY
 	LD      A,(mtm)         ;  ..otherwise, loop never times out!
         OR      A               ; Up to Speed?
         JR      NZ,MotoLp       ; ..loop if Not

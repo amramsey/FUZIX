@@ -21,10 +21,10 @@
 #define ALIGNUP(v)   alignup((v), 4U)
 #define ALIGNDOWN(v) aligndown((v), 4U)
 
-#define uputp    uputl            /* Copy user pointer type */
-#define ugetp(x) ugetl((x), NULL) /* between user and kernel */
-#define uputi    uputl            /* Copy user int type */
-#define ugeti(x) ugetl((x), NULL) /* between user and kernel */
+#define uputp    uputl          /* Copy user pointer type */
+#define ugetp(x) ugetl(x)	/* between user and kernel */
+#define uputi    uputl          /* Copy user int type */
+#define ugeti(x) ugetl(x)	/* between user and kernel */
 
 #ifdef CONFIG_FLAT
 
@@ -101,6 +101,9 @@ typedef union {            /* this structure is endian dependent */
 void copy_blocks(void *, void *, size_t);
 void swap_blocks(void *, void *, size_t);
 
+#define NORETURN __attribute__((__noreturn__))
+
 #define CPUTYPE CPUTYPE_ARMM4
+#define CPU_MID MID_ARMM0
 
 #endif /* __ARMM4_CPU_H */

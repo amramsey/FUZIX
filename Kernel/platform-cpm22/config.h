@@ -25,6 +25,10 @@
 /* We grow the buffer pool dynamically */
 #define CONFIG_DYNAMIC_BUFPOOL
 
+#define CONFIG_INPUT			/* Input device for joystick */
+#define CONFIG_INPUT_GRABMAX	0	/* No keyboard interface (yet) */
+
+/* We may not have a timer tick */
 #define CONFIG_NO_CLOCK
 
 /* Banks as reported to user space */
@@ -57,7 +61,7 @@
 #define NBUFS    4	  /* Number of block buffers */
 #define NMOUNTS	 4	  /* Number of mounts at a time */
 
-#define platform_copyright()
+#define plt_copyright()
 
 #define BOOTDEVICENAMES "hd#,fd#"
 

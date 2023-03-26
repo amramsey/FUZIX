@@ -152,6 +152,7 @@ typedef struct elfhdr{
 #define EM_SPARCV9	43		/* SPARC version 9 */
 #define EM_ALPHA_EXP	0x9026		/* DEC ALPHA */
 #define EM_VAX		75		/* DEC VAX */
+#define EM_RISCV	243		/* RISCV */
 #define EM_NUM		15		/* number of machine types */
 
 /* Version */
@@ -483,6 +484,6 @@ struct elf_args {
 #define R_68K_GOT16O	11
 #define R_68K_GOT8O	12
 
-extern int platform_relocate_rel(Elf32_Rel* rel, uaddr_t section_base);
+extern int plt_relocate_rel(Elf32_Rel* rel, uaddr_t section_base);
 
 #endif /* _SYS_ELF_H_ */

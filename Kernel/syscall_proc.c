@@ -236,16 +236,19 @@ char *addr;
 
 arg_t brk_extend(uaddr_t addr)
 {
-	#ifdef PROGBASE
-		if (addr < PROGBASE)
-			return EINVAL;
-	#endif
-    if (addr >= brk_limit()) {
-	kprintf("%d: out of memory by %d\n", udata.u_ptab->p_pid,
-	    addr - brk_limit());
-        return ENOMEM;
-    }
-    return 0;
+#if defined(CONFIG_SPLIT_ID)
+	if (addr < udata.u_database)
+		return EINVAL;
+#else
+	if (addr < udata.u_codebase)
+		return EINVAL;
+#endif
+	if (addr >= brk_limit()) {
+		kprintf("%d: out of memory by %d\n", udata.u_ptab->p_pid,
+			addr - brk_limit());
+		return ENOMEM;
+	}
+	return 0;
 }
 #endif
 
@@ -258,9 +261,9 @@ arg_t _brk(void)
 		return -1;
 	/* If we have done a break that gives us more room we must zero
 	   the extra as we no longer guarantee it is clear already */
+	udata.u_break = addr;
 	if (addr > udata.u_break)
 		uzero((void *)udata.u_break, addr - udata.u_break);
-	udata.u_break = addr;
 	return 0;
 }
 
@@ -310,7 +313,7 @@ arg_t _waitpid(void)
 	int retval;
 	uint8_t found;
 
-	if (statloc && !valaddr((uint8_t *) statloc, sizeof(int))) {
+	if (statloc && !valaddr_w((uint8_t *) statloc, sizeof(int))) {
 		udata.u_error = EFAULT;
 		return (-1);
 	}
@@ -464,6 +467,7 @@ arg_t _pause(void)
 	/* 0 is a traditional "pause", n is a timeout for doing
 	   sleep etc without ugly alarm hacks */
 	if (t) {
+		/* TODO: what if we pass FFFF ? */
 		udata.u_ptab->p_timeout = t + 1;
 		ptimer_insert();
 	}
@@ -508,7 +512,7 @@ arg_t _signal(void)
 		if (sig != SIGKILL && sig != SIGSTOP)
 			sb->s_ignored |= sigmask(sig);
 	} else {
-		if (func != SIG_DFL && !valaddr((uint8_t *) func, 1)) {
+		if (func != SIG_DFL && !valaddr_r((uint8_t *) func, 1)) {
 			udata.u_error = EFAULT;
 			goto nogood;
 		}

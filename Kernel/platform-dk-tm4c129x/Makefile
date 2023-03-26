@@ -1,8 +1,6 @@
 CSRCS = libc.c tm4c129x.c devtty.c devsdspi.c devices.c systick.c \
         syscall.c ssi.c procman.c eth.c gpio.c interrupt.c clock.c
-ifeq ($(BITS),elf32)
-CSRCS += elf.c
-endif
+
 ASRCS = tricks.S arm_exception.S
 
 GCC_CSRCS = libgcc2.c
@@ -10,18 +8,20 @@ GCC_ASRCS = libgcc.S
 GCC_COBJS = $(GCC_CSRCS:.c=$(BINEXT))
 GCC_AOBJS = $(GCC_ASRCS:.S=.o)
 
-LCSRCS =
+LCSRCS = armrelocate.c
 LOBJS = $(LCSRCS:.c=$(BINEXT))
 
 DSRCS = blkdev.c mbr.c devsd.c devsd_discard.c
 DOBJS = $(DSRCS:.c=$(BINEXT))
 
+NSRCS = net_native.c
+NOBJS = $(NSRCS:.c=$(BINEXT))
+
 COBJS = $(CSRCS:.c=$(BINEXT))
 AOBJS = $(ASRCS:.S=.o)
 
-OBJS  = $(COBJS) $(AOBJS) $(DOBJS) $(LOBJS) \
+OBJS  = $(COBJS) $(AOBJS) $(DOBJS) $(LOBJS) $(NOBJS) \
         $(GCC_AOBJS) $(GCC_COBJS)
-#        $(NUTTX_AOBJS) $(NUTTX_COBJS)
 
 CROSS_CCOPTS += -I../dev
 
@@ -48,6 +48,9 @@ $(DOBJS): %.o: ../dev/%.c
 $(LOBJS): %.o: ../lib/%.c
 	$(CROSS_CC) $(CROSS_CCOPTS) -c $<
 
+$(NOBJS): %.o: ../dev/net/%.c
+	$(CROSS_CC) $(CROSS_CCOPTS) -c $<
+
 clean:
 	rm -f *.o *.elf core* *~
 
@@ -60,7 +63,7 @@ image:
 	../syscall_proc.o ../syscall_net.o ../syscall_other.o \
 	../network.o ../mm.o ../swap.o ../flat.o \
 	../tty.o ../devsys.o ../usermem.o ../syscall_fs2.o \
-	../syscall_fs3.o ../syscall_exec.o ../syscall_exec$(BITS).o \
-	../syscall_level2.o ../level2.o ../select.o \
+	../syscall_fs3.o ../syscall_exec.o ../syscall_exec32.o \
+	../syscall_level2.o ../level2.o ../select.o ../blk512.o \
 	../usermem_std-armm4.o ../vt.o ../malloc.o \
 	../font8x8.o >../fuzix.map

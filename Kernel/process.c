@@ -101,7 +101,7 @@ void pwake(ptptr p)
 
 /* This used to be an assembly function in older FUZIX but it turns out we
    have to do a lot of common optimizations so it is now a C helper fronting
-   platform_switchout(). For speed and sanity reasons not every platform goes
+   plt_switchout(). For speed and sanity reasons not every platform goes
    via this path when pre-empting, but instead implements a subset of the checks
    in the platform code.
 
@@ -145,15 +145,12 @@ void switchout(void)
 		   pre-empted by someone else */
 	}
 	/* When we are idle we twiddle our thumbs here until a polled event
-	   in platform_idle or an interrupt wakes someone up */
+	   in plt_idle or an interrupt wakes someone up */
 	while (nready == 0) {
+		/* We are idle, we cannot sleep by calling psleep */
 		ei();
-		/* We are idle, that means we cannot sleep */
-		udata.u_ininterrupt = 1;
-		platform_idle();
+		plt_idle();
 		di();
-		/* We never idle in an interrupt so this is valid */
-		udata.u_ininterrupt = 0;
 	}
 	/* If only one process is ready to run and it's us then just
 	   return. This is the normal path in most Fuzix use cases as we
@@ -167,7 +164,7 @@ void switchout(void)
 		udata.u_ptab->p_status = P_READY;
 	}
 	/* We probably need to run something else */
-	platform_switchout();
+	plt_switchout();
 }
 
 /* Getproc returns the process table pointer of a runnable process.
@@ -224,7 +221,7 @@ ptptr getproc(void)
 				panic(PANIC_EI);
 			/* yes please, interrupts on (WRS: they probably are already on?) */
 			ei();
-			platform_idle();
+			plt_idle();
 		}
 	}
 }
@@ -268,7 +265,7 @@ ptptr getproc(void)
 			/* Wait for an I/O operation to let us run, don't run
 			   other tasks */
 			ei();
-			platform_idle();
+			plt_idle();
 		}
 	}
 }
@@ -379,8 +376,11 @@ ptptr ptab_alloc(void)
 			}
 			if (udata.u_ptab) {
 				newp->p_top = udata.u_top;
-			    newp->p_pgrp = udata.u_ptab->p_pgrp;
-			    memcpy(newp->p_name, udata.u_ptab->p_name, sizeof(newp->p_name));
+#ifdef CONFIG_UDATA_TEXTTOP
+				newp->p_texttop = udata.u_texttop;
+#endif
+				newp->p_pgrp = udata.u_ptab->p_pgrp;
+				memcpy(newp->p_name, udata.u_ptab->p_name, sizeof(newp->p_name));
 			}
 			if (pagemap_alloc(newp) == 0) {
 				newp->p_status = P_FORKING;
@@ -500,8 +500,7 @@ void timer_interrupt(void)
 	/* Check run time of current process. We don't charge time while
 	   swapping as the last thing we want to do is to swap a process in
 	   and decide it took time to swap in so needs to go away again! */
-	if (!inswap && (++runticks >= udata.u_ptab->p_priority)
-	    && !udata.u_insys && inint) {
+	if (!inswap && ++runticks >= udata.u_ptab->p_priority && !udata.u_insys) {
 		/* It might appear to make the best sense to just leave
 		   runticks ticking upwards if nobody else needs to run but
 		   this has two problems. The obvious one is that it may wrap
@@ -591,7 +590,7 @@ void unix_syscall(void)
 		/* We know there will be a switch if we hit this point so
 		   don't look for optimizations. Likewise we know a signal
 		   process will stay running/ready */
-		platform_switchout();
+		plt_switchout();
 		/* We will check the signals before we return to user space
 		   so all is good */
 	}
@@ -926,13 +925,15 @@ void doexit(uint16_t val)
 	udata.u_cursig = 0;
 
 	/* Discard our memory before we blow away and reuse the memory */
+#ifdef CONFIG_PLATFORM_UDMA
+	plt_udma_kill(udata.u_ptab);
+#endif
 	pagemap_free(udata.u_ptab);
 
 	for (j = 0; j < UFTSIZE; ++j) {
 		if (udata.u_files[j] != NO_FILE)
 			doclose(j);
 	}
-
 
 	udata.u_ptab->p_exitval = val;
 
@@ -994,7 +995,7 @@ void NORETURN panic(char *deathcry)
 {
 	kputs("\r\npanic: ");
 	kputs(deathcry);
-	platform_monitor();
+	plt_monitor();
 
 	for(;;);
 }
@@ -1004,7 +1005,7 @@ void NORETURN panic(char *deathcry)
 void exec_or_die(void)
 {
 	kputs("Starting /init\n");
-	platform_discard();
+	plt_discard();
 	_execve();
 	panic(PANIC_NOINIT);	/* BIG Trouble if we Get Here!! */
 }

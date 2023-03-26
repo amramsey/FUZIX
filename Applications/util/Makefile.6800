@@ -2,6 +2,7 @@ include $(FUZIX_ROOT)/Applications/rules.6800
 
 SRCSNS = \
 	basename.c \
+	border.c \
 	cat.c \
 	chgrp.c \
 	chmod.c \
@@ -104,7 +105,8 @@ SRCS  = banner.c \
 	sed.c \
 	decomp16.c
 
-SRCTC = tget.c \
+SRCTC = fleamacs.c \
+	tget.c \
         tchelp.c \
 	marksman.c \
 	vile.c

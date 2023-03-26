@@ -13,6 +13,8 @@
  */
 
 extern uint8_t internal32k;
+extern uint16_t framedet;
+extern uint8_t sys_hz;
 
 void pagemap_init(void)
 {
@@ -22,15 +24,14 @@ void pagemap_init(void)
 	for (i = 0x3e; i > 7; i--)
 		pagemap_add(i);
 	pagemap_add(3);	/* was used while loading, replaced by 3F */
-
-#ifdef SWAPDEV
-	for (i = 0; i < MAX_SWAPS; i++)
-		swapmap_init(i);
-#endif
 }
 
-uint8_t platform_param(char *p)
+uint8_t plt_param(char *p)
 {
+	if (strcmp(p, "over") == 0 || strcmp(p, "overclock") == 0) {
+		*((volatile uint8_t *)0xFFD7) = 0;
+		return 1;
+	}
 	return 0;
 }
 
@@ -121,7 +122,12 @@ void map_init(void)
 	uint16_t hash;
 	struct cart_rom_id *rom;
 
-	kprintf("%s system.\n", sysname[system_id]);
+	if (framedet >= 0x0500)
+		sys_hz = 5;
+	else
+		sys_hz = 6;
+	kprintf("%d0Hz %s system.\n", sys_hz, sysname[system_id]);
+
 	if (mpi_present()) {
 		kputs("MPI cartridge detected.\n");
 		cartslots = 4;

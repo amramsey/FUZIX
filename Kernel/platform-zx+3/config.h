@@ -2,6 +2,7 @@
 #define CONFIG_LARGE_IO_DIRECT(x)	1  /* We support direct to user I/O */
 #define CONFIG_SD
 #define SD_DRIVE_COUNT	2
+#define CONFIG_FDC765
 /* Enable to make ^Z dump the inode table for debug */
 #undef CONFIG_IDUMP
 /* Enable to make ^A drop back into the monitor */
@@ -32,6 +33,8 @@
 #define CONFIG_DYNAMIC_BUFPOOL
 #define CONFIG_DYNAMIC_SWAP
 #define MAXTICKS	20	/* Has to be high because we are swap only */
+
+#define CONFIG_KMOD
 
 /* Custom banking */
 

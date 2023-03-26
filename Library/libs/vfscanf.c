@@ -26,6 +26,7 @@
 
 #define	skip()	while(isspace(c)) { if ((c=fgetc(fp))<1) goto done; }
 
+#ifdef BUILD_LIBM
 /* fp scan actions */
 #define F_NADA	0	/* just change state */
 #define F_SIGN	1	/* set sign */
@@ -51,7 +52,7 @@
 #define FC_SIGN		3
 
 /* given transition,state do what action? */
-static const uint8_t fp_do[][NSTATE] = {
+static const uint8_t fp_do[4][NSTATE] = {
 	{F_INT,F_INT,F_INT,
 	 F_FRAC,F_FRAC,
 	 F_EXP,F_EXP,F_EXP},	/* see digit */
@@ -61,10 +62,10 @@ static const uint8_t fp_do[][NSTATE] = {
 	 F_NADA,F_QUIT,F_NADA,
 	 F_QUIT,F_QUIT,F_QUIT},	/* see e/E */
 	{F_SIGN,F_QUIT,F_QUIT,F_QUIT,F_QUIT,
-	 F_ESIGN,F_QUIT,F_QUIT},	/* see sign */
+	 F_ESIGN,F_QUIT,F_QUIT}	/* see sign */
 };
 /* given transition,state what is new state? */
-static const uint8_t fp_ns[][NSTATE] = {
+static const uint8_t fp_ns[4][NSTATE] = {
 	{FS_DIGS,FS_DIGS,FS_DIGS,
 	 FS_DD,FS_DD,
 	 FS_EDIGS,FS_EDIGS,FS_EDIGS},	/* see digit */
@@ -74,14 +75,13 @@ static const uint8_t fp_ns[][NSTATE] = {
 	 FS_E,0,FS_E,
 	},	/* see e/E */
 	{FS_SIGNED,0,0,0,0,
-	 FS_ESIGN,0,0},	/* see sign */
+	 FS_ESIGN,0,0}	/* see sign */
 };
 /* which states are valid terminators? */
 static const uint8_t fp_sval[NSTATE] = {
 	0,0,1,0,1,0,0,1
 };
 
-#ifdef BUILD_LIBM
 double fp_scan(int neg, int eneg, int n, int frac, int expo, int fraclen)
 {
   double f;
@@ -140,8 +140,8 @@ int vfscanf(FILE *fp, const char *fmt, va_list ap)
 	 endnull = 1;
 	 neg = -1;
 
-	 strcpy(delim, "\011\012\013\014\015 ");
-	 strcpy(digits, "0123456789ABCDEF");
+	 strcpy((char *)delim, "\011\012\013\014\015 ");
+	 strcpy((char *)digits, "0123456789ABCDEF");
 
 	 if (fmt[1] == '*')
 	 {
@@ -234,7 +234,7 @@ int vfscanf(FILE *fp, const char *fmt, va_list ap)
 
 	    digits[base] = '\0';
 	    p = ((unsigned char *)
-		 strchr(digits, toupper(c)));
+		 strchr((char *)digits, toupper(c)));
 
 	    if ((!c || !p) && width)
 	       goto done;
@@ -245,7 +245,7 @@ int vfscanf(FILE *fp, const char *fmt, va_list ap)
 	       c = fgetc(fp);
 	     zeroin:
 	       p = ((unsigned char *)
-		    strchr(digits, toupper(c)));
+		    strchr((char *)digits, toupper(c)));
 	    }
 	  savnum:
 	    if (store)
@@ -397,7 +397,7 @@ int vfscanf(FILE *fp, const char *fmt, va_list ap)
 	    if (width)
 	    {
 	       q = ((unsigned char *)
-		    strchr(delim, c));
+		    strchr((char *)delim, c));
 	       if ((c < 1) || lval == (q==0))
 	       {
 		  if (endnull)
@@ -415,7 +415,7 @@ int vfscanf(FILE *fp, const char *fmt, va_list ap)
 		  break;
 
 	       q = ((unsigned char *)
-		    strchr(delim, c));
+		    strchr((char *)delim, c));
 	       if (lval == (q==0))
 	          break;
 	    }

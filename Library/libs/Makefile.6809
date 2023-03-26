@@ -12,14 +12,16 @@ KRN_HEADERS = userstructs.h drivewire.h
 KRN_HEADERS_SRC = $(addprefix ../../Kernel/include/,$(KRN_HEADERS))
 KRN_HEADERS_COPY = $(addprefix ../include/sys/,$(KRN_HEADERS))
 SRC_CRT0 = crt0_$(PLATFORM).s crt0nostdio_$(PLATFORM).s
+SRC_CRT0 += crt0_$(PLATFORM)_rel.s crt0nostdio_$(PLATFORM)_rel.s
 OBJ_CRT0 = $(SRC_CRT0:.s=.o)
 SRC_ASM = setjmp_6809.s ashlsi3_6809.s
 OBJ_ASM = $(SRC_ASM:.s=.o)
-SRC_C =  __argv.c abort.c accept.c aes256.c asctime.c assert.c atexit.c
-SRC_C += bcmp.c bcopy.c bind.c bsearch.c bzero.c
+SRC_C =  __argv.c abort.c accept.c aes256.c asctime.c asctime_r.c assert.c atexit.c
+SRC_C += basename.c bcmp.c bcopy.c bind.c bsearch.c bzero.c
 SRC_C += calloc.c cfree.c clock.c closedir.c
 SRC_C += closedir_r.c clock_gettime.c clock_getres.c clock_settime.c
 SRC_C += connect.c creat.c crypt.c ctermid.c ctime.c cuserid.c
+SRC_C += dirname.c
 SRC_C += err.c errno.c error.c
 SRC_C += execl.c execv.c execvp.c exit.c
 SRC_C += fclose.c fdatasync.c fflush.c fgetc.c fgetgrent.c fgetpwent.c
@@ -86,6 +88,7 @@ SRC_LM += sinf.c sincosf.c sinhf.c
 SRC_LM += sqrtf.c tgammaf.c
 SRC_LM += vfscanf_m.c vfprintf_m.c
 SRC_LM += __expo2f.c __float_bits.c __fpclassifyf.c __log1pf.c __signgam.c
+SRC_LM += __sin.c __cos.c __tan.c
 SRC_LM += mathhelper.c
 
 

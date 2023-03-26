@@ -14,17 +14,18 @@
         .globl map_process_always
         .globl map_process
         .globl map_kernel_di
+        .globl map_kernel_restore
         .globl map_process_always_di
         .globl map_save_kernel
         .globl map_restore
 	.globl map_for_swap
-	.globl _platform_reboot
+	.globl _plt_reboot
 	.globl _int_disabled
-	.globl platform_interrupt_all
+	.globl plt_interrupt_all
 	.globl _need_resched
 
         ; exported debugging tools
-        .globl _platform_monitor
+        .globl _plt_monitor
         .globl outchar
 
         ; imported symbols
@@ -62,9 +63,9 @@ _bufpool:
 ;
         .area _CODE2
 
-_platform_monitor:
+_plt_monitor:
 	    ; Reboot ends up back in the monitor
-_platform_reboot:
+_plt_reboot:
 	xor a
 	out (0x38), a		; ROM appears low
 	rst 0			; bang
@@ -76,6 +77,7 @@ _int_disabled:
 map_buffers:
 map_kernel:
 map_kernel_di:
+map_kernel_restore:
 	push af
 	ld a,#1
 map_a:
@@ -132,7 +134,7 @@ _program_early_vectors:
         ld (0x0067), hl
 
 _program_vectors:
-platform_interrupt_all:
+plt_interrupt_all:
 	ret
 
 	.globl spurious		; so we can debug trap on it

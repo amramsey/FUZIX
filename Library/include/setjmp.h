@@ -11,6 +11,12 @@
 	extern int __setjmp(jmp_buf __env);
 	#define setjmp(x) __setjmp(x)
 
+#elif defined(__8085__)
+
+	typedef unsigned jmp_buf[3];	/*  BC (sp) and sp */
+	extern int _setjmp(jmp_buf __env);
+	#define setjmp(x) _setjmp(x)
+
 #elif defined(__CC65__)
 
 	typedef char jmp_buf[5];
@@ -20,6 +26,12 @@
 #elif defined(__CC68__)
 
 	typedef char jmp_buf[4];
+	extern int _setjmp(jmp_buf __env);
+	#define setjmp(x) _setjmp(x)
+
+#elif defined(__CC9995__)
+
+	typedef unsigned int jmp_buf[13];
 	extern int _setjmp(jmp_buf __env);
 	#define setjmp(x) _setjmp(x)
 
@@ -82,7 +94,19 @@
 #elif defined(__ARM_EABI__)
 
 	typedef uint32_t jmp_buf[10];
-    extern int setjmp(jmp_buf __env);
+	extern int setjmp(jmp_buf __env);
+	__attribute__((__noreturn__)) void longjmp (jmp_buf __env, int __val);
+
+#elif defined(__ns32k__)
+
+	typedef uint32_t jmp_buf[13];
+	extern int setjmp(jmp_buf __env);
+	__attribute__((__noreturn__)) void longjmp (jmp_buf __env, int __val);
+
+#elif defined(__riscv)
+
+	typedef uint64_t jmp_buf[19];
+	extern int setjmp(jmp_buf __env);
 	__attribute__((__noreturn__)) void longjmp (jmp_buf __env, int __val);
 
 #else

@@ -21,6 +21,7 @@ usermem.rel
 platform-zx+3/devices.rel
 devio.rel
 filesys.rel
+blk512.rel
 process.rel
 inode.rel
 syscall_exec.rel
@@ -38,6 +39,7 @@ simple.rel
 swap.rel
 devsys.rel
 devinput.rel
+kmod.rel
 platform-zx+3/devtty.rel
 platform-zx+3/devide.rel
 platform-zx+3/devide_discard.rel

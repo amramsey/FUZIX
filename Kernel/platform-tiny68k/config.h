@@ -1,5 +1,5 @@
 /* Enable to make ^Z dump the inode table for debug */
-#define CONFIG_IDUMP
+#undef CONFIG_IDUMP
 /* Enable to make ^A drop back into the monitor */
 #undef CONFIG_MONITOR
 /* Profil syscall support (not yet complete) */
@@ -10,6 +10,7 @@
 
 #define CONFIG_MULTI
 #define CONFIG_FLAT
+#define CONFIG_SPLIT_ID
 #define CONFIG_PARENT_FIRST
 /* It's not that meaningful but we currently chunk to 512 bytes */
 #define CONFIG_BANKS 	(65536/512)
@@ -42,7 +43,7 @@
 
 #define CONFIG_IDE
 
-#define platform_copyright()
+#define plt_copyright()
 
 /* Note: select() in the level 2 code will not work on this configuration
    at the moment as select is limited to 16 processes. FIXME - support a

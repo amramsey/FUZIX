@@ -31,9 +31,9 @@
  *	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <stdio.h>
 #include <stdint.h>
 #include <ctype.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
@@ -45,6 +45,7 @@
 #include <limits.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 
 #ifndef HUP
@@ -52,6 +53,21 @@
 #endif				/* HUP */
 
 #define MAX_HEIGHT	255
+
+#if defined(__linux__)
+
+/* Linux lacks strlcpy */
+
+size_t strlcpy(char *dst, const char *src, size_t dstsize)
+{
+  size_t len = strnlen(src, dstsize);
+  size_t cp = len >= dstsize ? dstsize - 1 : len;
+  memcpy(dst, src, cp);
+  dst[cp] = 0;
+  return len;
+}
+
+#endif
 
 /* ---- */
 
@@ -64,6 +80,7 @@ uint_fast8_t screenx, screeny, screen_height, screen_width;
 static char *t_go, *t_clreol, *t_clreos;
 static uint8_t conbuf[64];
 static uint8_t *conp = conbuf;
+static mode_t oldperms = 0xFFFF;
 
 extern void con_puts(const char *s);
 
@@ -113,7 +130,6 @@ void con_putc(uint8_t c)
 	}
 	conq(c);
 	screenx++;
-adjust:
 	if (screenx == screen_width) {
 		screenx = 0;
 		screeny++;
@@ -135,7 +151,7 @@ static void con_twrite(char *p, int n)
 void con_puts(const char *s)
 {
 	uint8_t c;
-	while (c = (uint8_t) * s++)
+	while ((c = (uint8_t) * s++) != 0)
 		con_putc(c);
 }
 
@@ -161,7 +177,6 @@ void con_force_goto(uint_fast8_t y, uint_fast8_t x)
 
 void con_goto(uint_fast8_t y, uint_fast8_t x)
 {
-#if 0
 	if (screenx == x && screeny == y)
 		return;
 	if (screeny == y && x == 0) {
@@ -173,7 +188,6 @@ void con_goto(uint_fast8_t y, uint_fast8_t x)
 		con_newline();
 		return;
 	}
-#endif	
 	con_force_goto(y, x);
 }
 
@@ -227,11 +241,15 @@ int con_scroll(int n)
 	/* For now we don't do backscrolls: FIXME */
 	if (n < 0)
 		return 1;
+	/* Redraw anyway */
+	if (n >= screen_height)
+		return 1;
 	/* Scrolling down we can do */
 	con_force_goto(screen_height - 1, 0);
 	while (n--)
 		conq('\n');
 	con_force_goto(screeny, screenx);
+	return 0;
 }
 
 /* TODO: cursor key handling */
@@ -244,16 +262,21 @@ int con_getch(void)
 	return c;
 }
 
-int con_size(uint8_t c)
+int con_size_x(uint8_t c, uint8_t x)
 {
 	if (c == '\t')
-		return 8 - (screenx & 7);
+		return 8 - (x & 7);
 	/* We will leave unicode out 8) */
 	if (c > 127)
 		return 4;
 	if (c < 32 || c == 127)
 		return 2;
 	return 1;
+}
+
+int con_size(uint8_t c)
+{
+	return con_size_x(c, screenx);
 }
 
 static int do_read(int fd, void *p, int len)
@@ -263,7 +286,7 @@ static int do_read(int fd, void *p, int len)
 		if (l < 0)
 			perror("read");
 		else
-			write(2, "short read from tchelp.\n", 28);
+			write(2, "short read from tchelp.\n", 25);
 		return -1;
 	}
 	return 0;
@@ -279,7 +302,6 @@ static int tty_init(void)
 	int fd[2];
 	pid_t pid;
 	int ival[3];
-	int n;
 	int status;
 
 	if (pipe(fd) < 0) {
@@ -344,8 +366,10 @@ void con_exit(void)
 
 int con_init(void)
 {
-	int n;
 	static struct winsize w;
+#ifdef VTSIZE	
+	int n;
+#endif	
 	if (tty_init())
 		return -1;
 	if (tcgetattr(0, &con_termios) == -1)
@@ -398,11 +422,16 @@ char *gap;
 char *egap;
 char *filename;
 int modified;
+int rename_needed;
 int status_up;
 
 /* 0 = clean, 1+ = nth char from (1..n) onwards are dirty */
 uint8_t dirty[MAX_HEIGHT + 1];
 uint8_t dirtyn;
+
+/* For now this is needed by save internally, but we will also want a
+   block sized buffer for a few other things later */
+char scratch[512];
 
 /* There are lots of cases we touch n + 1, to avoid having to keep checking
    for last lines make this one bigger */
@@ -471,7 +500,6 @@ uint8_t dirtyn;
  *
  *	Make more vi like
  *	Implement regexps
- *	Add some minimal : commands (:w notably and :n)
  *	Yank/paste
  *	Remove stdio and curses use
  *	Use uint8, uint when we can for speed
@@ -648,6 +676,7 @@ keytable_t table[] = {
 int dobeep(void)
 {
 	write(1, "\007", 1);
+	return 0;
 }
 
 char *ptr(int offset)
@@ -727,7 +756,7 @@ int adjust(int offset, int column)
 	char *p;
 	int i = 0;
 	while ((p = ptr(offset)) < ebuf && *p != '\n' && i < column) {
-		i += con_size(*p);
+		i += con_size_x(*p, i);
 		++offset;
 	}
 	return (offset);
@@ -1209,33 +1238,58 @@ int open_after(void)
 int save(char *fn)
 {
 	int fd;
-	int i, err = 1;
+	int i;
 	size_t length;
 	char *gptr;
+	mode_t mode;
 
-	/* Should we write to temp name and rename ? FIXME */
-	fd = open(fn, O_WRONLY|O_CREAT|O_TRUNC, 0666);
-	if (fd != -1) {
-		i = indexp;
-		indexp = 0;
-		movegap();
-		gptr = egap;
-		length = (size_t) (ebuf - egap);
-		err = 0;
-		/* Write out each chunk that is bigger than INT_MAX as
-		   that is our limit per syscall */
-		while(length > INT_MAX) {
-			err |= write(fd, gptr, INT_MAX) != INT_MAX;
-			length -= INT_MAX;
-			gptr += INT_MAX;
-		}
-		/* Write out the tail */
-		err |= write(fd, gptr, length) != length;
-		err |= close(fd);
-		indexp = i;
-		modified = 0;
+	strlcpy(scratch, fn, 511);
+	gptr = scratch + strlen(scratch);
+	*gptr++ = '~';
+	*gptr = 0;
+
+	/* Rename the original but not more working copies */
+	if (rename_needed) {
+		/* Rename the old file - if it exists */
+		unlink(scratch);
+		if (link(fn, scratch) == 0) {
+			if (unlink(fn))
+				return 0;
+		} else if (errno != ENOENT)
+			return 0;
+		rename_needed = 0;
 	}
-	return !err;
+
+	/* Open file: if no permissions to set use rw/rw/rw + umask
+	   if not force it, but take care to start private */
+	if  (oldperms == 0xFFFF)
+		mode = 0666;
+	else
+		mode = 0600;
+	if ((fd = open(fn, O_WRONLY|O_CREAT|O_TRUNC, mode)) < 0)
+		return 0;
+	if (oldperms != 0xFFFF)
+		fchmod(fd, oldperms & 0777);
+	i = indexp;
+	indexp = 0;
+	movegap();
+	gptr = egap;
+	length = (size_t) (ebuf - egap);
+	/* Write out in chunks so we are ok on 16bit int 32bit long */
+	while(length) {
+		size_t l = length;
+		if (l > 8192)
+			l = 8192;
+		if (write(fd, gptr, l) != l)
+			break;
+		length -= l;
+		gptr += l;
+	}
+	indexp = i;
+	if (close(fd) || length)
+		return 0;
+	modified = 0;
+	return 1;
 }
 
 int save_done(char *path, uint8_t n)
@@ -1299,12 +1353,16 @@ static void colon_process(char *buf)
 		return;
 	}
 	if (*buf == 'w') {
-		if (buf[1] == 'q') {
+		buf++;
+		if (*buf == 'q') {
 			quit = 1;
+			buf++;
 		}
-		if (buf[quit + 1] == ' ')
-			save_done(buf + quit + 2, quit);
-		else if (buf[quit + 1] == 0)
+		if (*buf == ' ') {
+			rename_needed = 1;
+			save_done(buf + 1, quit);
+			/* FIMXE: should change filename */
+		} else if (*buf == 0)
 			save_done(filename, quit);
 		else
 			warning("unknown :w option.");
@@ -1323,12 +1381,13 @@ int colon_mode(void)
 	char buf[132];
 	char *bp = buf;
 	int c;
-	int xp = 0;
+	int xp = 1;	/* The : */
 
 	/* Wipe the status line and prompt */
 	con_goto(screen_height - 1, 0);
 	con_putc(':');
 	con_clear_to_eol();
+	con_goto(screen_height - 1, 0);
 
 	*bp = 0;
 	while (1) {
@@ -1341,15 +1400,26 @@ int colon_mode(void)
 			colon_process(buf);
 			break;
 		}
+		/* TAB is hard for erase handling so skip it */
+		if (c == '\t') {
+			dobeep();
+			continue;
+		}
 		/* Erase as many symbols as the character took */
 		if (c == 8 || c == 127) {
 			if (bp != buf) {
+				/* This doesn't work for tab but we avoided
+				   tab above. Other symbols are fixed width */
 				uint8_t s = con_size(*--bp);
-				con_goto(screen_height - 1, xp - s);
 				xp -= s;
-				while (s--)
-					con_putc(' ');
 				con_goto(screen_height - 1, xp);
+				if (t_clreol)
+					con_clear_to_eol();
+				else {
+					while (s--)
+						con_putc(' ');
+					con_goto(screen_height - 1, xp);
+				}
 				*bp = 0;
 			}
 		} else {
@@ -1468,7 +1538,7 @@ void display(int redraw)
 			break;
 		/* Normal characters */
 		if (*p != '\n') {
-			uint8_t s = con_size(*p);
+			uint8_t s = con_size_x(*p, j);
 			/* If the symbol fits and is beyond our dirty marker */
 			if (j >= *dirtyp && j + s < screen_width) {
 				/* Move cursor only if needed. We assume
@@ -1554,7 +1624,7 @@ int main(int argc, char *argv[])
 
 	if (sizeof(void *) == 2) {
 		buf = sbrk(0);
-		ebuf = &mem - 768;
+		ebuf = (char *)&mem - 768;
 		if (ebuf < buf || brk(ebuf))
 			oom();
 	} else {
@@ -1568,6 +1638,7 @@ int main(int argc, char *argv[])
 	if (argc < 2)
 		filename = "";
 	else {
+		struct stat t;
 		fd = open(filename = *++argv, O_RDONLY);
 		if (fd == -1 && errno != ENOENT) {
 			perror(*argv);
@@ -1579,17 +1650,24 @@ int main(int argc, char *argv[])
 			int n = 0;
 			size = ebuf - buf;
 			/* We can have 32bit ptr, 16bit int even in theory */
-			if (size > INT_MAX) {
-				while (n = doread(*argv, fd, buf + o, INT_MAX)) {
+			if (size >= 8192) {
+				while ((n = doread(*argv, fd, buf + o, 8192)) > 0) {
 					gap += n;
 					size -= n;
 					o += n;
 				}
 			} else
 				n = doread(*argv, fd, buf + o, size);
+			if (n < 0) {
+				perror(*argv);
+				return 2;
+			}
 			gap += n;
+			if (fstat(fd, &t) == 0)
+				oldperms = t.st_mode;
 			close(fd);
 		}
+		rename_needed = 1;
 	}
 
 	if (con_init())

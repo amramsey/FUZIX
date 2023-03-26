@@ -36,7 +36,7 @@ static void devide_delay(void)
     timeout = set_timer_ms(25);
 
     while(!timer_expired(timeout))
-       platform_idle();
+       plt_idle();
 }
 
 /* Reset depends upon the presence of alt control, which is optional */
@@ -66,6 +66,14 @@ void devide_init_drive(uint_fast8_t drive)
 
     devide_writeb(ide_reg_devhead, select);
     kprintf("IDE drive %d: ", drive);
+
+    /* Cleaner way to probe */
+    devide_writeb(ide_reg_lba_0, 0xAA);
+    if (devide_readb(ide_reg_lba_0) != 0xAA)
+        goto out;
+    devide_writeb(ide_reg_lba_0, 0x55);
+    if (devide_readb(ide_reg_lba_0) != 0x55)
+        goto out;
 
 #ifdef IDE_8BIT_ONLY
     if (IDE_IS_8BIT(drive)) {
@@ -101,15 +109,30 @@ void devide_init_drive(uint_fast8_t drive)
     blk_op.nblock = 1;
     devide_read_data();
 
+#ifdef CONFIG_IDE_CHS
+    /* TODO: CHS + BSWAP */
+    ide_spt[drive] = buffer[12];
+    ide_heads[drive] = buffer[6];
+    ide_cyls[drive] = buffer[2]|(buffer[3] << 8);
+    kprintf(" C/H/S %u/%u/%u", ide_cyls[drive], buffer[6], buffer[12]);
+
+    devide_writeb(ide_reg_devhead, select | (buffer[6] - 1));
+    devide_writeb(ide_reg_sec_count, buffer[12]);
+    devide_writeb(ide_reg_lba_1, buffer[2]);
+    devide_writeb(ide_reg_lba_2, buffer[3]);
+    devide_writeb(ide_reg_command, IDE_CMD_INIT_DEV_PARAM);
+    if (!devide_wait(IDE_STATUS_READY))
+        goto out;
+#else
 #ifdef CONFIG_IDE_BSWAP
     if(!(buffer[98] & 0x02)) {
 #else
     if(!(buffer[99] & 0x02)) {
-#endif    
-        kputs("LBA unsupported.\n");
+#endif
+        kputs("LBA unsupported.");
         goto failout;
     }
-
+#endif
     blk = blkdev_alloc();
     if(!blk)
 	goto failout;
@@ -127,8 +150,12 @@ void devide_init_drive(uint_fast8_t drive)
 	}
     }
 
+#ifdef CONFIG_IDE_CHS
+    blk->drive_lba_count = ide_heads[drive] * (unsigned int)ide_spt[drive] * (unsigned long)ide_cyls[drive];
+#else
     /* read out the drive's sector count */
     blk->drive_lba_count = le32_to_cpu(*((uint32_t*)&buffer[120]));
+#endif
 
     /* done with our temporary memory */
     tmpfree(buffer);
@@ -139,11 +166,11 @@ void devide_init_drive(uint_fast8_t drive)
 
     /* scan partitions */
     blkdev_scan(blk, SWAPSCAN);
-
     return;
 failout:
     tmpfree(buffer);
 out:
+    kputchar('\n');
     ide_deselect();
     return;
 }

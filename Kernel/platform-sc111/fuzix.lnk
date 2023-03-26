@@ -1,7 +1,7 @@
 -mwxuy
 -i fuzix.ihx
 -b _CODE=0x0100
--b _COMMONMEM=0xF800
+-b _COMMONMEM=0xF600
 -b _DISCARD=0xE000
 -l z180
 platform-sc111/crt0.rel
@@ -19,6 +19,7 @@ usermem.rel
 platform-sc111/devices.rel
 devio.rel
 filesys.rel
+blk512.rel
 process.rel
 inode.rel
 syscall_exec.rel
@@ -30,7 +31,7 @@ syscall_proc.rel
 syscall_other.rel
 tty.rel
 mm.rel
-bankfixed.rel
+banksplit.rel
 swap.rel
 devsys.rel
 platform-sc111/discard.rel
@@ -42,5 +43,5 @@ platform-sc111/blkdev.rel
 platform-sc111/monitor.rel
 platform-sc111/ds1302.rel
 platform-sc111/ds1302_discard.rel
-platform-sc111/ds1302_rc2014.rel
+platform-sc111/ds1302_rcbus.rel
 -e

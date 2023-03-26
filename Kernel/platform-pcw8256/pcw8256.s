@@ -13,6 +13,7 @@
 	    .globl map_process
 	    .globl map_process_always
 	    .globl map_kernel_di
+	    .globl map_kernel_restore
 	    .globl map_process_di
 	    .globl map_process_always_di
 	    .globl _int_disabled
@@ -20,11 +21,11 @@
 	    .globl map_restore
 	    .globl map_for_swap
 	    .globl map_process_a
-	    .globl platform_interrupt_all
+	    .globl plt_interrupt_all
 
             ; exported debugging tools
-            .globl _platform_monitor
-            .globl _platform_reboot
+            .globl _plt_monitor
+            .globl _plt_reboot
             .globl outchar
 	    .globl _bugout
 
@@ -75,16 +76,16 @@ font8x8	    .equ	0x9C00		; font loaded after framebuffer
 ;
 ;	Ask the controller to reboot
 ;
-_platform_reboot:
+_plt_reboot:
 	    ld a, #0x01
 	    out (0xF8), a
             ; should never get here
-_platform_monitor:
+_plt_monitor:
 	    di
 	    halt
-	    jr _platform_monitor
+	    jr _plt_monitor
 
-platform_interrupt_all:
+plt_interrupt_all:
 	    ret
 
 ; -----------------------------------------------------------------------------
@@ -249,6 +250,7 @@ kmap:	    .db 0x80, 0x81, 0x82
 map_buffers:
 map_kernel:
 map_kernel_di:
+map_kernel_restore:
 	    push af
 	    push hl
 	    ld hl, #kmap

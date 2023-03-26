@@ -45,7 +45,7 @@
  *
  *	- Esc b c	Set ink colour
  *	- Esc c c	Set paper colour
- *	Where c uses the low 4bits to provide IBRG colours
+ *	Where c uses the low 4bits to provide IGRB colours
  *		0 black
  *		1 blue
  *		2 red
@@ -404,7 +404,6 @@ void vt_load(struct vt_switch *vt)
 
 #ifdef CONFIG_VT_SIMPLE
 
-
 static unsigned char *cpos;
 static unsigned char csave;
 
@@ -429,7 +428,7 @@ void cursor_on(int8_t y, int8_t x)
 {
 	cpos = char_addr(y, x);
 	csave = *cpos;
-	*cpos = VT_MAP_CHAR('_');
+	*cpos = VT_MAP_CHAR(VT_CURSOR_CHAR);
 }
 
 void plot_char(int8_t y, int8_t x, uint16_t c)
@@ -440,13 +439,13 @@ void plot_char(int8_t y, int8_t x, uint16_t c)
 void clear_lines(int8_t y, int8_t ct)
 {
 	unsigned char *s = char_addr(y, 0);
-	memset(s, ' ', ct * VT_WIDTH);
+	memset(s, VT_MAP_CHAR(' '), ct * VT_WIDTH);
 }
 
 void clear_across(int8_t y, int8_t x, int16_t l)
 {
 	unsigned char *s = char_addr(y, x);
-	memset(s, ' ', l);
+	memset(s, VT_MAP_CHAR(' '), l);
 }
 
 void vtattr_notify(void)

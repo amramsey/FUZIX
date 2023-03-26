@@ -70,6 +70,7 @@ extern uint16_t swap_dev;
 /* Specify this if there is a real time clock capable of reporting seconds. It
    will be used to lock the kernel time better to reality. Other details like
    Y2K support, or even supporting dates as well don't matter */
+#define CONFIG_RTC_DS1302
 #define CONFIG_RTC
 /* Specify that there is a full real time clock that can supply the date and
    time to the system. */
@@ -130,4 +131,4 @@ extern uint16_t swap_dev;
    console should match a firmware set rate */
 #define TTY_INIT_BAUD B38400	/* To match ROMWBW */
 
-#define platform_copyright()
+#define plt_copyright()

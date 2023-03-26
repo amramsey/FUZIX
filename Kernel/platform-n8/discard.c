@@ -2,6 +2,10 @@
 #include <kdata.h>
 #include <printf.h>
 #include <devtty.h>
+#include <vt.h>
+#include <ps2kbd.h>
+#include <ps2mouse.h>
+#include <vdp1.h>
 #include "config.h"
 #include <z180.h>
 
@@ -12,17 +16,19 @@ extern uint8_t far_writable(uint8_t page) __fastcall;
 static uint16_t low_mem = 128;
 static uint16_t high_mem = 0;
 
+uint8_t fontdata_6x8;		/* Dummy for linker */
+
 void init_hardware_c(void)
 {
-    uint8_t i;
-
     /* Bring up the video so we can see what is going on */
     vdp_init();
-    vdp_load_font();
     vdp_wipe_consoles();
+/*    vdp_load_font(); - loaded by boot loader */
     vdp_restore_font();
     vtinit();
     vdp_reload();
+    ps2kbd_init();
+    ps2mouse_init();
 
     /* Label memory (we are using bank 0 for kernel) */
     far_write(1);
@@ -69,7 +75,7 @@ void map_init(void)
     /* kernel bank udata (0x300 bytes) is never used again -- could be reused? */
 }
 
-uint8_t platform_param(char *p)
+uint8_t plt_param(char *p)
 {
     used(p);
     return 0;

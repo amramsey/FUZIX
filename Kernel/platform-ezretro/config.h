@@ -15,8 +15,7 @@
 /* 8x 56K banks, 1 is kernel */
 #define MAX_MAPS	7
 #define MAP_SIZE	0xE000U
-/* Level 2 feature set */
-#define CONFIG_LEVEL_2
+
 /* Networking (not usable yet but for debug/development) */
 #undef CONFIG_NET
 #undef CONFIG_NET_NATIVE
@@ -44,8 +43,8 @@
 #define NBUFS    5	  /* Number of block buffers */
 #define NMOUNTS	 4	  /* Number of mounts at a time */
 
-#define platform_discard()
-#define platform_copyright()
+#define plt_discard()
+#define plt_copyright()
 
 //#define BOOTDEVICENNAMES "hd#,fd#,,rd#"
 #define BOOTDEVICE (0<<8) /* hda */

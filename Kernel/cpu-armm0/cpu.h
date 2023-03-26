@@ -3,10 +3,10 @@
 #define ALIGNUP(v)   alignup(v, 4)
 #define ALIGNDOWN(v) aligndown(v, 4)
 
-#define uputp    uputl            /* Copy user pointer type */
-#define ugetp(x) ugetl(x, NULL)   /* between user and kernel */
-#define uputi    uputl            /* Copy user int type */
-#define ugeti(x) ugetl(x, NULL)   /* between user and kernel */
+#define uputp    uputl          /* Copy user pointer type */
+#define ugetp(x) ugetl(x)       /* between user and kernel */
+#define uputi    uputl          /* Copy user int type */
+#define ugeti(x) ugetl(x)	/* between user and kernel */
 
 #define brk_limit() (udata.u_ptab->p_top)
 
@@ -15,7 +15,7 @@ extern void* memset(void*, int, size_t);
 extern size_t strlen(const char *);
 extern uint16_t swab(uint16_t);
 
-/* LX106 doesn't benefit from making a few key variables in
+/* ARM M0 doesn't benefit from making a few key variables in
    non-reentrant functions static */
 #define staticfast auto
 
@@ -73,4 +73,7 @@ inline static void __hard_irqrestore(uint32_t ps)
 extern void copy_blocks(void *, void *, unsigned int);
 extern void swap_blocks(void *, void *, unsigned int);
 
+#define NORETURN __attribute__((__noreturn__))
+#undef __fastcall
+#define __fastcall /* nothing */
 

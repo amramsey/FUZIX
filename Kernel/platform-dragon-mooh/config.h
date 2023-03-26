@@ -64,6 +64,9 @@
                           /* In this case, the default is the first TTY device */
                             /* Temp FIXME set to serial port for debug ease */
 
+#define CONFIG_INPUT			/* Input device for joystick */
+#define CONFIG_INPUT_GRABMAX	3
+
 /* We need a tidier way to do this from the loader */
 #define CMDLINE	NULL	  /* Location of root dev name */
 
@@ -84,7 +87,7 @@
 
 /* Remember to update platform-dragon-nx32/kernel.defs to match */
 
-extern void platform_discard(void);
-#define platform_copyright()
+extern void plt_discard(void);
+#define plt_copyright()
 
 #define BOOTDEVICENAMES "hd#,fd#"

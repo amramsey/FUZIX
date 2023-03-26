@@ -37,8 +37,11 @@ tcflag_t termios_mask[NUM_DEV_TTY + 1] = {
 	_CSYS | CBAUD | PARENB | PARODD | CSIZE | CSTOPB | CRTSCTS
 };
 
+uint_fast8_t kbd_open;	/* Count open keyboard sessions to save poll time */
 uint8_t vidmode;	/* For live screen */
 static uint8_t mode[5];	/* Per console */
+static uint8_t tmsinkpaper[5] = {0, 0xF4, 0xF4, 0xF4, 0xF4 };
+static uint8_t tmsborder[5] = { 0, 0x04, 0x04, 0x04, 0x04 };
 static uint8_t vswitch;	/* Track vt switch locking due top graphics maps */
 uint8_t vt_twidth;
 uint8_t vt_tright;
@@ -93,7 +96,7 @@ void tty_setup(uint_fast8_t minor, uint_fast8_t flags)
 	if (cflag & PARENB) {
 		cntla |= 2;
 		if (cflag & PARODD)
-			cntlb |= 4;
+			cntlb |= 0x10;
 	}
 	if ((cflag & CSIZE) == CS8)
 		cntla |= 4;
@@ -148,13 +151,17 @@ int tty_carrier(uint_fast8_t minor)
 void tty_pollirq_asci0(void)
 {
     while(ASCI_STAT0 & 0x80)
-        tty_inproc(1, ASCI_RDR0);
+        tty_inproc(5, ASCI_RDR0);
+    if (ASCI_STAT0 & 0x70)
+        ASCI_CNTLA0 &= ~0x08;
 }
 
 void tty_pollirq_asci1(void)
 {
     while(ASCI_STAT1 & 0x80)
-        tty_inproc(2, ASCI_RDR1);
+        tty_inproc(6, ASCI_RDR1);
+    if (ASCI_STAT1 & 0x70)
+        ASCI_CNTLA1 &= ~0x08;
 }
 
 static void tms_setoutput(uint_fast8_t minor)
@@ -168,10 +175,8 @@ static void tms_putc(uint_fast8_t minor, uint_fast8_t c)
 {
 	irqflags_t irq = di();
 
-	if (outputtty != minor) {
-		ASCI_TDR0 = '@';
+	if (outputtty != minor)
 		tms_setoutput(minor);
-	}
 	irqrestore(irq);
 	if (!vswitch)
 		vtoutput(&c, 1);
@@ -181,9 +186,6 @@ void tty_putc(uint_fast8_t minor, uint_fast8_t c)
 {
     switch(minor){
     	case 1:
-	// TOOD DEBUG HACK
-            while(!(ASCI_STAT0 & 2));
-            ASCI_TDR0 = c;
     	case 2:
     	case 3:
     	case 4:
@@ -237,9 +239,6 @@ static struct videomap tms_map = {
 	MAP_PIO
 };
 
-/* FIXME: we need a way of reporting CPU speed/TMS delay info as unlike the
-   ports so far we need delays on the RC2014 */
-
 /*
  *	We always report a TMS9918A. Now it is possible that someone
  *	is using a 9938 or 9958 so we might want to add some VDP autodetect
@@ -272,7 +271,67 @@ static struct display tms_mode[2] = {
 	}
 };
 
-void vdp_reload(void)
+static void vdp_writeb(uint16_t addr, uint8_t v)
+{
+	vdp_set(addr|0x4000);
+	vdp_out(v);
+}
+
+static void vdp_set_char(uint_fast8_t c, uint8_t *d)
+{
+	irqflags_t irq = di();
+	unsigned addr = 0x1000 + 8 * c;
+	uint_fast8_t i;
+	for (i = 0; i < 8; i++)
+		vdp_writeb(addr++, *d++);
+	irqrestore(irq);
+}
+
+static void vdp_udgsave(void)
+{
+	irqflags_t irq = di();
+	unsigned i;
+	unsigned uaddr = 0x1400;	/* Char 128-159 */
+	unsigned addr = 0x3800 + 256 * (inputtty - 1);
+	for (i = 0; i < 256; i++)
+		vdp_writeb(addr, vdp_readb(uaddr++));
+	irqrestore(irq);
+}
+
+static void vdp_udgload(void)
+{
+	irqflags_t irq = di();
+	unsigned i;
+	unsigned addr = 0x3800 + 256 * (inputtty - 1);
+	unsigned uaddr = 0x1000;		/* Char 128-159, inverses at 0-31 for cursor */
+	for (i = 0; i < 256; i++) {
+		uint8_t c = vdp_readb(uaddr++);
+		vdp_writeb(addr, ~c);
+		vdp_writeb(addr + 0x400, c);
+	}
+	irqrestore(irq);
+}
+
+/* Restore colour attributes */
+void vdp_attributes(void)
+{
+	irqflags_t irq = di();
+	if (mode[inputtty] == 1) {
+		vdp_setcolour(tmsinkpaper[inputtty]);
+		vdp_setborder(tmsborder[inputtty]);
+	} else {
+		vdp_setborder(tmsinkpaper[inputtty]);
+	}
+	irqrestore(irq);
+}
+
+void vdp_attributes_m(uint8_t minor)
+{
+	if (inputtty == minor)
+		vdp_attributes();
+}
+
+void vdp_reload(uint8_t reset)
 {
 	irqflags_t irq = di();
 
@@ -286,17 +345,84 @@ void vdp_reload(void)
 		vt_tright = 31;
 	}
 	vidmode = mode[inputtty];
-	vdp_restore_font();
+	if (reset)
+		vdp_restore_font();
+	vdp_udgload();
 	vt_cursor_off();
 	vt_cursor_on();
-	kputs("vdpreload");
+	vdp_attributes();
 	irqrestore(irq);
+}
+
+/* Callback from the keyboard driver for a console switch */
+void do_conswitch(uint8_t c)
+{
+	/* No switch if the console is locked for graphics */
+	if (vswitch)
+		return;
+
+	vt_cursor_off();
+	inputtty = c;
+	if (vidmode != mode[c])
+		vdp_reload(0);
+	else {
+		vdp_udgload();
+		vdp_attributes();
+	}
+	vdp_set_console();
+	vt_cursor_on();
+}
+
+/* PS/2 call back for alt-Fx */
+void ps2kbd_conswitch(uint8_t console)
+{
+	if (console > 4 || console == inputtty || vswitch)
+		return;
+	do_conswitch(console);
+}
+
+static struct fontinfo fonti[] = {
+	{ 0, 255, 128, 159, FONT_INFO_6X8 },
+	{ 0, 255, 128, 159, FONT_INFO_8X8 },
+};
+
+static uint8_t igrbmsx[16] = {
+	1,	/* 0000 to Black */
+	4,	/* 000B to 4 dark blue */
+	6,	/* 00R0 to 6 dark red */
+	13,	/* 00RB to magneta */
+	12,	/* 0G00 to dark green */
+	7,	/* 0G0B to cyan */
+	10,	/* 0GR0 to dark yellow */
+	14,	/* 0GRB to grey */
+	14,	/* I000 to grey */
+	5,	/* I00B to light blue */
+	9,	/* 10R0 to light red */
+	8,	/* 10RB to magenta or medium red ? - use mr for now */
+	3,	/* 1G00 to light green */
+	7,	/* 1G0B to cyan - no light cyan */
+	11,	/* 1GR0 to light yellow */
+	15	/* 1GRB to white */
+};
+
+static uint8_t igrb_to_msx(uint8_t c)
+{
+	/* Machine specific colours */
+	if (c & 0x10)
+		return c & 0x0F;
+	/* IGRB colours */
+	return igrbmsx[c & 0x0F];
 }
 
 /* We can have up to 4 vt consoles or it may be shadowing serial input */
 int n8tty_ioctl(uint8_t minor, uarg_t arg, char *ptr)
 {
+  uint_fast8_t is_wr = 0;
+  unsigned i = 0;
+  unsigned topchar = 256;
   uint8_t map[8];
+  uint8_t c;
+
   if (minor <= 4) {
   	switch(arg) {
   	case GFXIOC_GETINFO:
@@ -308,7 +434,7 @@ int n8tty_ioctl(uint8_t minor, uarg_t arg, char *ptr)
 		return uput(&tms_map, ptr, sizeof(struct display));
 	case GFXIOC_UNMAP:
 		if (vswitch == minor) {
-			vdp_reload();
+			vdp_reload(1);
 			vswitch = 0;
 		}
 		return 0;
@@ -323,9 +449,43 @@ int n8tty_ioctl(uint8_t minor, uarg_t arg, char *ptr)
 			return uput(&tms_mode[m], ptr, sizeof(struct display));
 		mode[minor] = m;
 		if (minor == inputtty)
-			vdp_reload();
+			vdp_reload(0);
 		return 0;
 		}
+	case VTBORDER:
+		c = ugetc(ptr);
+		tmsborder[minor]  = igrb_to_msx(c & 0x1F);
+		vdp_attributes_m(minor);
+		return 0;
+	case VTINK:
+		c = ugetc(ptr);
+		tmsinkpaper[inputtty] &= 0x0F;
+		tmsinkpaper[inputtty] |= igrb_to_msx(c & 0x1F) << 4;
+		vdp_attributes_m(minor);
+		return 0;
+	case VTPAPER:
+		c = ugetc(ptr);
+		tmsinkpaper[inputtty] &= 0xF0;
+		tmsinkpaper[inputtty] |= igrb_to_msx(c & 0x1F);
+		vdp_attributes_m(minor);
+		return 0;
+	case VTFONTINFO:
+		return uput(fonti + mode[minor], ptr, sizeof(struct fontinfo));
+	case VTSETUDG:
+		topchar = 128 + 32;
+		i = 128;
+	case VTSETFONT:
+		while(i < topchar) {
+			if (uget(ptr, map, 8) == -1) {
+				udata.u_error = EFAULT;
+				return -1;
+			}
+			ptr += 8;
+			vdp_set_char(i++, map);
+		}
+		vdp_udgsave();
+		vdp_udgload();
+		return 0;
 	case VDPIOC_SETUP:
 		/* Must be locked to issue */
 		if (vswitch != minor) {
@@ -338,6 +498,7 @@ int n8tty_ioctl(uint8_t minor, uarg_t arg, char *ptr)
 		vdp_setup(map);
 		return 0;
 	case VDPIOC_READ:
+		is_wr = 1;
 	case VDPIOC_WRITE:
 	{
 		struct vdp_rw rw;
@@ -353,7 +514,7 @@ int n8tty_ioctl(uint8_t minor, uarg_t arg, char *ptr)
 			return -1;
 		}
 		size = rw.lines * rw.cols;
-		if (valaddr(addr, size) != size) {
+		if (valaddr(addr, size, is_wr) != size) {
 			udata.u_error = EFAULT;
 			return -1;
 		}
@@ -372,11 +533,21 @@ int n8tty_ioctl(uint8_t minor, uarg_t arg, char *ptr)
   return tty_ioctl(minor, arg, ptr);
 }
 
+int n8tty_open(uint_fast8_t minor, uint16_t flag)
+{
+	int n = tty_open(minor, flag);
+	if (n == 0 && minor < 5)
+		kbd_open++;
+	return n;
+}
+
 int n8tty_close(uint_fast8_t minor)
 {
 	if (vswitch == minor) {
-		vdp_reload();
+		vdp_reload(1);
 		vswitch = 0;
 	}
+	if (minor < 5)
+		kbd_open--;
 	return tty_close(minor);
 }

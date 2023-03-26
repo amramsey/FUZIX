@@ -470,7 +470,7 @@ static void keydecode(void)
 	tty_inproc(curminor, c);
 }
 
-void platform_interrupt(void)
+void plt_interrupt(void)
 {
 	*pia_col;
 	newkey = 0;
@@ -489,6 +489,12 @@ void platform_interrupt(void)
 	}
 	timer_interrupt();
 	dw_vpoll();
+}
+
+/* At this point the COCO2 doesn't use interrupt nesting */
+void plt_reinterrupt(void)
+{
+	panic("reint");
 }
 
 void vtattr_notify(void)

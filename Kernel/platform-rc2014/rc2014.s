@@ -18,12 +18,12 @@
 	.globl map_save_kernel
 	.globl map_restore
 	.globl map_for_swap
-	.globl platform_interrupt_all
+	.globl plt_interrupt_all
 	.globl _copy_common
 	.globl mpgsel_cache
 	.globl top_bank
 	.globl _kernel_pages
-	.globl _platform_reboot
+	.globl _plt_reboot
 	.globl _bufpool
 	.globl _int_disabled
 
@@ -50,6 +50,7 @@
 	.globl _sio1_present
 	.globl _u16x50_present
 	.globl _z180_present
+	.globl _eipc_present
 	.globl _udata
 
 	; exported debugging tools
@@ -90,8 +91,11 @@ SIOD_D		.EQU	SIOC_C+3
 KIOA_C		.EQU	0x89
 KIOB_C		.EQU	0x8B
 
-ACIA_C          .EQU     0xA0
-ACIA_D          .EQU     0xA1
+EIPCSA_C	.EQU	0x19
+EIPCSB_C	.EQU	0x1B
+
+ACIA_C          .EQU     0x80
+ACIA_D          .EQU     0x81
 ACIA_RESET      .EQU     0x03
 ACIA_RTS_HIGH_A      .EQU     0xD6   ; rts high, xmit interrupt disabled
 ACIA_RTS_LOW_A       .EQU     0x96   ; rts low, xmit interrupt disabled
@@ -120,7 +124,32 @@ init_hardware:
 	ld a,#0xFF
 	out (0xBB),a
 
-	; Check for a KIO first of all
+	; Check for an EIPC
+
+	in  a,(0xF0)
+	and #7
+	cp #3
+	jr nz, not_eipc
+	ld c,#0x10
+	call check_ctc
+
+	jr nz, not_eipc
+
+	ld a,#1
+	ld (_eipc_present),a
+
+	ld hl,#sio_setup
+	ld bc,#0x0A00 + EIPCSA_C		; 10 bytes to SIOA_C
+	otir
+	ld hl,#sio_setup
+	ld bc,#0x0A00 + EIPCSB_C		; and to SIOB_C
+	otir
+
+	jp probe_cpu
+
+
+not_eipc:
+	; Check for a KIO
 
 	ld c,#0x84
 	call check_ctc
@@ -448,14 +477,8 @@ ctc_check:
 	sub a,#2
 	ld (_ctc_port),a
 
-	;
-	; Set up timer for 200Hz
-	;
-
-	ld a,#0xB5
+	ld a,#0x43	; Turn the CTC off
 	out (c),a
-	ld a,#144
-	out (c),a	; 200 Hz
 
 	;
 	; Set up counter CH3 for SC102 or similar SIO (the SC110 sadly can't be
@@ -509,7 +532,7 @@ _code1_end:
 ;=========================================================================
         .area _COMMONMEM
 
-_platform_reboot:
+_plt_reboot:
         ; We need to map the ROM back in -- ideally into every page.
         ; This little trick based on a clever suggestion from John Coffman.
         di
@@ -536,7 +559,7 @@ _platform_reboot:
 _int_disabled:
 	.db 1
 
-platform_interrupt_all:
+plt_interrupt_all:
 	ret
 
 ; install interrupt vectors
@@ -700,6 +723,44 @@ map_for_swap:
 	ld (mpgsel_cache + 1),a
 	out (MPGSEL_1),a
 	ret
+
+	.globl	map_soft81
+	.globl	map_soft81_restore
+;
+;	Magic map functions for the ZX81 emulation page flippery. Only plays
+;	with the bottom 32K
+;
+map_soft81:	; HL is the ptptr and it might be swapped out!
+	ld	de,#P_TAB__P_PAGE_OFFSET
+	add	hl,de
+	ld	a,(hl)
+	or	a
+	ret	z		; not mapped
+	inc	hl
+	ld	e,(hl)		; save 2nd byte before we change map
+				; and it vanishes
+	ld	bc,(mpgsel_cache)
+	ld	(soft81_0),bc
+	ld	(mpgsel_cache),a
+	out	(MPGSEL_0),a
+	ld	a,e		; second byte
+	ld	(mpgsel_cache + 1),a
+	out	(MPGSEL_1),a
+	ret
+
+map_soft81_restore:
+	ld	hl,(soft81_0)
+	ld	(mpgsel_cache),hl
+	ld	a,l
+	out	(MPGSEL_0),a
+	ld	a,h
+	out	(MPGSEL_1),a
+	ret
+
+soft81_0:
+	.byte	0
+soft81_1:
+	.byte	0
 
 ;
 ;	Bank switch functions

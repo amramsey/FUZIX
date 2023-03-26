@@ -2,6 +2,7 @@ include $(FUZIX_ROOT)/Applications/rules.6502
 
 SRCSNS = \
 	basename.c \
+	border.c \
 	cat.c \
 	chgrp.c \
 	chmod.c \
@@ -10,6 +11,7 @@ SRCSNS = \
 	date.c \
 	dirname.c \
 	false.c \
+	fleamacs.c \
 	groups.c \
 	head.c \
 	init.c \
@@ -35,6 +37,7 @@ SRCSNS = \
 	touch.c \
 	tr.c \
 	true.c \
+	vile.c \
 	while1.c \
 	whoami.c \
 	yes.c
@@ -47,6 +50,7 @@ SRCS  = banner.c \
 	cp.c \
 	cut.c \
 	dd.c \
+	decomp16.c \
 	df.c \
 	dosread.c \
 	du.c \
@@ -59,6 +63,7 @@ SRCS  = banner.c \
 	free.c \
 	fsck.c \
 	fsck-fuzix.c \
+	gptparse.c \
 	grep.c \
 	id.c \
 	kbdrate.c \
@@ -76,6 +81,7 @@ SRCS  = banner.c \
 	passwd.c \
 	ps.c \
 	remount.c \
+	sed.c \
 	seq.c \
 	setboot.c \
 	setdate.c \

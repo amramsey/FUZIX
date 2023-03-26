@@ -15,6 +15,7 @@
 	.globl _hdb_timeout
 	.globl _bufpool
 	.globl _discard_size
+	.globl _framedet
 
 	; imported
 	.globl unix_syscall_entry
@@ -25,8 +26,8 @@
 	.globl _vtoutput
 
 	; exported debugging tools
-	.globl _platform_monitor
-	.globl _platform_reboot
+	.globl _plt_monitor
+	.globl _plt_reboot
 	.globl outchar
 	.globl ___hard_di
 	.globl ___hard_ei
@@ -79,8 +80,22 @@ init_hardware:
 	sta 0xFF03
 	jsr _vid256x192
 	jsr _vtinit
+	; NTSC or PAL/SECAM ?
+	ldx	#0
+	lda	$ff02
+waitvb0
+	lda	$ff03
+	bpl	waitvb0		; wait for vsync
+	lda	$ff02
+waitvb2:
+	leax	1,x		; time until vsync starts
+	lda	$ff03
+	bpl	waitvb2
+	stx	_framedet
 	rts
 
+_framedet:
+	.word	0
 
 ; old p6809.s stuff below
 
@@ -99,15 +114,15 @@ init_hardware:
 
             .area .common
 
-_platform_reboot:
+_plt_reboot:
 	    orcc #0x10
 	    clr 0xFF90		; disable MMU on MOOH
 	    clr 0x0071
 	    jmp [0xFFFE]	; BASIC ROM & vectors are back
 
-_platform_monitor:
+_plt_monitor:
 	    orcc #0x10
-	    bra _platform_monitor
+	    bra _plt_monitor
 
 ___hard_di:
 	    tfr cc,b		; return the old irq state
@@ -284,6 +299,60 @@ _hdb_id:
 _hdb_type:
 	.db 0	
 
+
+;	Joystick helper
+;
+;	jsread(buffer)
+;
+;	Returns a buffer of words in the format
+;	right left/right, button
+;	right up/down, button
+;	left left/right, button
+;	left up/down, button
+;
+	.globl _jsread
+
+_jsread:
+	; Buffer is in X on entry
+	pshs u
+	lda #$FF
+	sta $FF02		; Keyboard scan lines off
+	lda #$08		; Select right joystick
+	sta $FF23		; Sound off a moment
+	bsr jstwo
+	lda #$09
+	bsr jstwo
+	puls u
+	rts
+jstwo:
+	sta $FF03		; P0 CR B - select joystick L or R
+	lda #$04
+	sta $FF01		; X
+	bsr jsfind
+	lda #$0C		; Y
+	sta $FF01
+	; Fall through
+jsfind:
+	ldu #jstmp
+	; Binary search the joystick DAC position
+	lda #$20
+	sta ,u		; start in the middle and binary search
+jssearch:
+	lsr ,u
+	beq jsdone
+	sta $FF20
+	tst $FF20
+	bpl jsover
+	adda ,u
+	bra jssearch
+jsover:
+	suba ,u
+	bra jssearch
+jsdone:
+	ldb $FF20	; save fire button in bit 0
+	rts
+jstmp:
+	.byte 0
 
             .area .common
 

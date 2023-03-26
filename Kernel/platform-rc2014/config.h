@@ -4,8 +4,8 @@
 #define CONFIG_RC2014_CF
 /* Set this to be able to do networking (not currently working) */
 #undef CONFIG_RC2014_NET
-/* Set this if you have the 8255 IDE adapter (mutually exclusive of RC2014_CF) */
-#undef CONFIG_RC2014_PPIDE
+/* Set this if you have the 8255 IDE adapter */
+#define CONFIG_RC2014_PPIDE
 /* Set this if you have the floppy interface */
 #define CONFIG_RC2014_FLOPPY
 /* Set this for SD card support via PIO or SC129 at 0x68 */
@@ -89,9 +89,19 @@ extern uint16_t swap_dev;
 #define NBUFS    5        /* Number of block buffers - must match kernel.def */
 #define NMOUNTS	 4	  /* Number of mounts at a time */
 
-#define MAX_BLKDEV 5	    /* 1 floppy, 4 IDE or SD */
+#define MAX_BLKDEV 5	    /* 1 floppy, 4 IDE or SD and maybe a ZIP */
 
-/* On-board DS1302, we can read the time of day from it */
+#define CONFIG_BLK_PPA
+
+/* Enable one RTC interface */
+#define CONFIG_RTC_DS1302	/* Standard RC2014 bitbang clock card
+                                   also used on various single board setups */
+#undef CONFIG_RTC_DS12885	/* EtchedPixels DS12885 and similar */
+#ifdef CONFIG_RTC_DS12885
+#define RTC_ADDR	0xC0	/* register address */
+#define RTC_DATA	0xC1	/* register data */
+#endif
+
 #define CONFIG_RTC
 #define CONFIG_RTC_FULL
 #define CONFIG_RTC_EXTENDED
@@ -115,6 +125,8 @@ extern uint16_t swap_dev;
 #define VT_BOTTOM	23
 #define MAX_VT		4		/* Always come up as lowest minors */
 
+/* We need this for the soft ZX81 support */
+#define CONFIG_PLATFORM_UDMA
 /* Keyboard contains non-ascii symbols */
 #define CONFIG_UNIKEY
 /* Font for the TMS9918A */
@@ -147,4 +159,4 @@ extern void qwrite(uint8_t *addr, uint8_t val);
 #define AMD_DATA	0x42
 #define AMD_CTL		0x43
 
-#define platform_copyright()		// for now
+#define plt_copyright()		// for now

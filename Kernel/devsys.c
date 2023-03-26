@@ -9,12 +9,13 @@
 #include <gpio.h>
 #include <i2c.h>
 #include <net_native.h>
+#include <kmod.h>
 
 /*
  *	System devices:
  *
  *	Minor	0	null
- *	Minor 	1	kmem    (kernel memory)
+ *	Minor 	1	kmem    (kernel memory) (and module loader)
  *	Minor	2	zero
  *	Minor	3	proc
  *	Minor   4       mem     (physical memory)
@@ -64,7 +65,7 @@ int sys_read(uint_fast8_t minor, uint_fast8_t rawflag, uint_fast8_t flag)
 #endif
 #ifdef CONFIG_RTC_FULL
 	case 5:
-		return platform_rtc_read();
+		return plt_rtc_read();
 #endif
 #ifdef CONFIG_DEV_I2C
 	case 7:
@@ -107,7 +108,7 @@ int sys_write(uint_fast8_t minor, uint_fast8_t rawflag, uint_fast8_t flag)
 #endif
 #ifdef CONFIG_RTC_FULL
 	case 5:
-		return platform_rtc_write();
+		return plt_rtc_write();
 #endif
 #ifdef CONFIG_DEV_I2C
 	case 7:
@@ -134,11 +135,11 @@ int sys_ioctl(uint_fast8_t minor, uarg_t request, char *data)
 {
 #ifdef CONFIG_RTC_EXTENDED
 	if (minor == 5)
-		return platform_rtc_ioctl(request, data);
+		return plt_rtc_ioctl(request, data);
 #endif
 #ifdef CONFIG_DEV_PLATFORM
 	if (minor == 6)
-		return platform_dev_ioctl(request, data);
+		return plt_dev_ioctl(request, data);
 #endif
 #ifdef CONFIG_DEV_GPIO
 	if (minor == 8)
@@ -155,6 +156,10 @@ int sys_ioctl(uint_fast8_t minor, uarg_t request, char *data)
 #ifdef CONFIG_INPUT
 	if (minor == 66)
 		return inputdev_ioctl(request, data);
+#endif
+#ifdef CONFIG_KMOD
+	if (minor == 1)
+		return kmod_ioctl(request, data);
 #endif
 	if (minor != 3)
 		return -1;

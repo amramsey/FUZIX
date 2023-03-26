@@ -21,6 +21,7 @@ platform-cpm22/devfd.rel
 platform-cpm22/devices.rel
 devio.rel
 filesys.rel
+blk512.rel
 process.rel
 inode.rel
 syscall_exec.rel
@@ -35,6 +36,8 @@ mm.rel
 bankfixed.rel
 swap.rel
 devsys.rel
+devinput.rel
 platform-cpm22/devlpr.rel
 platform-cpm22/devtty.rel
+platform-cpm22/devinput.rel
 -e

@@ -14,6 +14,7 @@
 	    .globl map_buffers
 	    .globl map_kernel
 	    .globl map_kernel_di
+	    .globl map_kernel_restore
 	    .globl map_process
 	    .globl map_process_di
 	    .globl map_process_a
@@ -22,13 +23,13 @@
 	    .globl map_save_kernel
 	    .globl map_restore
 	    .globl map_for_swap
-	    .globl platform_interrupt_all
+	    .globl plt_interrupt_all
 	    .globl _kernel_flag
 	    .globl _int_disabled
 
             ; exported debugging tools
-            .globl _platform_monitor
-            .globl _platform_reboot
+            .globl _plt_monitor
+            .globl _plt_reboot
             .globl outchar
 
             ; imported symbols
@@ -42,7 +43,6 @@
 	    .globl outhl
 	    .globl null_handler
 	    .globl nmi_handler
-	    .globl _inint
 	    .globl kstack_top
 
 	    .globl s__COMMONMEM
@@ -50,6 +50,82 @@
 
             .include "kernel.def"
             .include "../kernel-z80.def"
+
+
+	.area _COMMONMEM
+;
+;	These must be 4K aligned so put them at the start of common
+;	space for now. This will all change when we start running
+;	with the MMU being used properly.
+;
+;	Interrupt vectors. Kernel and identity mapped
+;
+SUPER	.equ	0x0000		; Supervisor, all ints masked
+
+	.globl _vectors
+
+_vectors:
+	.word	#SUPER		; 00	Reserved
+	.word	invalid
+	.word	#SUPER		; 04	NMI
+	.word	nmi_handler
+	.word	#SUPER		; 08	External Line A
+	.word	external
+	.word	#SUPER		; 0C	External Line B
+	.word	external
+	.word	#SUPER		; 10	External Line C
+	.word	external
+	.word	#SUPER		; 14	CTC 0
+	.word	ctc0
+	.word	#SUPER		; 18	CTC 1
+	.word	ctc1
+	.word	#SUPER		; 1C	Reserved
+	.word	invalid		; The broken undocumented CTC
+	.word	#SUPER		; 20	CTC 2
+	.word	invalid
+	.word	#SUPER		; 24	DMA 0
+	.word	invalid
+	.word	#SUPER		; 28	DMA 1
+	.word	invalid
+	.word	#SUPER		; 2C	DMA 2
+	.word	invalid
+	.word	#SUPER		; 30	DMA 3
+	.word	invalid
+	.word	#SUPER		; 34	UART rx
+	.word	ttyint
+	.word	#SUPER		; 38	UART tx
+	.word	invalid
+	.word	#SUPER		; 3C	Single-step
+	.word	sstep
+	.word	#SUPER		; 40	Breakpoint
+	.word	sigtrap
+	.word	#SUPER		; 44	Divison by zero
+	.word	sigfpe
+	.word	#SUPER		; 48	Stack overflow
+	.word	stackover
+	.word	#SUPER		; 4C	Access violation
+	.word	sigsegv
+	.word	#SUPER		; 50	System call
+	.word	invalid
+	.word	#SUPER		; 54	Privileged instruction
+	.word	sigill
+	.word	#SUPER		; 58	EPU
+	.word	sigill
+	.word	#SUPER		; 5C	EPU
+	.word	sigill
+	.word	#SUPER		; 60	EPU
+	.word	sigill
+	.word	#SUPER		; 64	EPU
+	.word	invalid
+	.word	#SUPER		; 68	Reserved
+	.word	invalid
+	.word	#SUPER		; 6C	Reserved
+	.word	invalid
+
+	; What can follow then is 384 word size vectors for INT A B C
+	; for IM2 style external I/O which we don't use
+
+
 
 ;
 ; Buffers (we use asm to set this up as we need them in a special segment
@@ -72,22 +148,22 @@ _bufpool:
 ;	complex handling is done. It's useful on a few platforms but
 ;	generally a ret is all that is needed
 ;
-platform_interrupt_all:
+plt_interrupt_all:
 	    ret
 
 ;
 ;	If you have a ROM monitor you can get back to then do so, if not
 ;	fall into reboot.
 ;
-_platform_monitor:
+_plt_monitor:
 ;
 ;	Reboot the system if possible, halt if not. On a system where the
 ;	ROM promptly wipes the display you may want to delay or wait for
 ;	a keypress here (just remember you may be interrupts off, no kernel
 ;	mapped so hit the hardware).
 ;
-_platform_reboot:
-	jr _platform_reboot
+_plt_reboot:
+	jr _plt_reboot
 
 ; -----------------------------------------------------------------------------
 ; KERNEL MEMORY BANK (may be below 0x8000, only accessible when the kernel is
@@ -111,7 +187,7 @@ init_early:
 	    ld c,#0x06
 	    ld hl,#_vectors		; Vectors on 4K boundary
 	    ld l,h			; Work around crappy linker
-	    ld h,#0
+	    ld h,#0			; top 16 bits of 24bit vector
 ;	    ldctl (c),hl		; into int trap/vector ptr
 	    .byte 0xED, 0x6E
 	    ld c,#0x08
@@ -145,7 +221,8 @@ init_hardware:
 	    ld l,#0xFF
 	    call _io_bank_set
 	    push hl
-	    ld hl,#0xBBE0	; MMU on S and U, no split I/D
+	    ld hl,#0xBBFF	; TODO: revise as we get going
+				; MMU on S and U, no split I/D
 				; We may want to consider MMU off in
 				; supervisor later on - is there a perf
 				; gain versus MMU on ??
@@ -250,6 +327,7 @@ _program_vectors:
 map_buffers:
 map_kernel:
 map_kernel_di:
+map_kernel_restore:
 	    push af
 	    xor a
 	    call map_process_a	; do all the logic in one place with
@@ -291,9 +369,10 @@ map_process_a:			; used by bankfork
 	    add hl,hl
 	    add hl,hl
 	    ld de,#frames	; Lazy - look it up it's only a hack for now
+	    add hl,de
 	    ld a,#0x10
-	    out (0x44),a	; pointer to 0x10 (system pages)
-	    ld bc,#0x0FF4
+	    out (0xF1),a	; PDR pointer to 0x10 (system pages)
+	    ld bc,#0x10F4	; 16 words to F4
 ;;	    otirw
             .db 0xED, 0x93
 	    pop hl
@@ -547,76 +626,6 @@ frames:
 	.word 0x00FA		;
 
 
-;
-;	Interrupt vectors. Kernel and identity mapped
-;
-	.area _VECTORS
-
-SUPER	.equ	0x0000		; Supervisor, all ints masked
-
-	.globl _vectors
-
-_vectors:
-	.word	#SUPER		; 00	Reserved
-	.word	invalid
-	.word	#SUPER		; 04	NMI
-	.word	nmi_handler
-	.word	#SUPER		; 08	External Line A
-	.word	external
-	.word	#SUPER		; 0C	External Line B
-	.word	external
-	.word	#SUPER		; 10	External Line C
-	.word	external
-	.word	#SUPER		; 14	CTC 0
-	.word	ctc0
-	.word	#SUPER		; 18	CTC 1
-	.word	ctc1
-	.word	#SUPER		; 1C	Reserved
-	.word	invalid		; The broken undocumented CTC
-	.word	#SUPER		; 20	CTC 2
-	.word	invalid
-	.word	#SUPER		; 24	DMA 0
-	.word	invalid
-	.word	#SUPER		; 28	DMA 1
-	.word	invalid
-	.word	#SUPER		; 2C	DMA 2
-	.word	invalid
-	.word	#SUPER		; 30	DMA 3
- 	.word	invalid
-	.word	#SUPER		; 34	UART rx
-	.word	ttyint
-	.word	#SUPER		; 38	UART tx
-	.word	invalid
-	.word	#SUPER		; 3C	Single-step
-	.word	sstep
-	.word	#SUPER		; 40	Breakpoint
-	.word	sigtrap
-	.word	#SUPER		; 44	Divison by zero
-	.word	sigfpe
-	.word	#SUPER		; 48	Stack overflow
-	.word	stackover
-	.word	#SUPER		; 4C	Access violation
-	.word	sigsegv
-	.word	#SUPER		; 50	System call
-	.word	invalid
-	.word	#SUPER		; 54	Privileged instruction
-	.word	sigill
-	.word	#SUPER		; 58	EPU
-	.word	sigill
-	.word	#SUPER		; 5C	EPU
-	.word	sigill
-	.word	#SUPER		; 60	EPU
-	.word	sigill
-	.word	#SUPER		; 64	EPU
-	.word	invalid
-	.word	#SUPER		; 68	Reserved
-	.word	invalid
-	.word	#SUPER		; 6C	Reserved
-	.word	invalid
-
-	; What can follow then is 384 word size vectors for INT A B C
-	; for IM2 style external I/O which we don't use
-
 	.area _COMMONMEM
 
 SIGILL	.equ	4
@@ -687,7 +696,7 @@ sig_or_die:
 	; Once we have proper supervisor/user we can just check the pushed
 	; status to see what to do. For now fudge it roughly.
 	push af
-	ld a,(_inint)
+	ld a,(_udata + U_DATA__U_ININTERRUPT)
 	or a
 	jr nz, diediedie
 	ld a,(_udata + U_DATA__U_INSYS)
@@ -702,7 +711,7 @@ stackover:
 	ld sp,#kstack_top
 	ld hl,#stackfault
 	call outstring
-	jp _platform_monitor
+	jp _plt_monitor
 
 trapexit:
 	; Discard the data
@@ -725,7 +734,7 @@ diediedie:
 	call outhlcolon
 	pop hl		; pc
 	call outhlcolon
-	jp _platform_monitor
+	jp _plt_monitor
 
 outhlcolon:
 	call outcharhex

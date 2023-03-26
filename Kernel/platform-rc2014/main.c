@@ -7,9 +7,11 @@
 #include <devinput.h>
 #include <rtc.h>
 #include <ds1302.h>
-#include <rc2014.h>
+#include <ds12885.h>
+#include <rcbus.h>
 #include <ps2kbd.h>
 #include <zxkey.h>
+#include <softzx81.h>
 #include <net_w5x00.h>
 
 extern unsigned char irqvector;
@@ -22,6 +24,7 @@ uint8_t sio1_present;
 uint8_t z180_present;
 uint8_t quart_present;
 uint8_t tms9918a_present;
+uint8_t ef9345_present;
 uint8_t dma_present;
 uint8_t zxkey_present;
 uint8_t copro_present;
@@ -32,9 +35,12 @@ uint8_t u16x50_present;
 uint8_t z512_present = 1;	/* We assume so and turn it off if not */
 uint8_t fpu_present;
 uint8_t kio_present;
+uint8_t eipc_present;
 
-uint8_t platform_tick_present;
+uint8_t plt_tick_present;
 uint8_t timer_source = TIMER_NONE;
+
+uint8_t ticksperclk;
 
 /* From ROMWBW */
 uint16_t syscpu;
@@ -51,6 +57,7 @@ uint8_t vtattr_cap;
 uint16_t vdpport = 0x99 + (40 << 8);	/* 256 * width + port */
 
 uint8_t shadowcon;
+uint8_t soft81_on;
 
 /* Our pool ends at 0x4000 */
 uint8_t *initptr = (uint8_t *)0x4000;
@@ -76,7 +83,7 @@ uint8_t *code1_alloc(uint16_t size)
 	return p;
 }
 
-void platform_discard(void)
+void plt_discard(void)
 {
 	uint16_t discard_size = (uint16_t)initptr - (uint16_t)bufpool_end;
 	bufptr bp = bufpool_end;
@@ -95,7 +102,7 @@ void platform_discard(void)
 	}
 }
 
-void platform_idle(void)
+void plt_idle(void)
 {
 	if (timer_source != TIMER_NONE)
 		__asm halt __endasm;
@@ -132,16 +139,30 @@ static int16_t timerct;
 static void timer_tick(uint8_t n)
 {
 	timerct += n;
-	while (timerct >= 20) {
+	while (timerct >= ticksperclk) {
 		do_timer_interrupt();
-		timerct -= 20;
+		timerct -= ticksperclk;
 	}
 }
 
 __sfr __at (Z180_IO_BASE + 0x10) TIME_TCR;      /* Timer control register                     */
 __sfr __at (Z180_IO_BASE + 0x0C) TIME_TMDR0L;   /* Timer data register,    channel 0L         */
 
-void platform_interrupt(void)
+static void key_poll(void)
+{
+	/* Running as a home computer not serial */
+	if (zxkey_present)
+		zxkey_poll();
+	if (ps2kbd_present && ps2_type == PS2_BITBANG) {
+		if (!ps2busy) {
+			int16_t n = ps2kbd_get();
+			if (n >= 0)
+				ps2kbd_byte(n);
+		}
+	}
+}
+
+void plt_interrupt(void)
 {
 	/* FIXME: For Z180 we know if the ASCI ports are the source so
 	   should fastpath them (vector 8 and 9) */
@@ -161,35 +182,58 @@ void platform_interrupt(void)
 	if (timer_source == TIMER_Z180) {
 		if (irqvector == 3) {	/* Timer 0 */
 			uint8_t r;
-			r = TIME_TMDR0L;
 			r = TIME_TCR;
+			r = TIME_TMDR0L;
 			timerct++;
 			if (timerct == 4) {
 				do_timer_interrupt();
 				timerct = 0;
 			}
+			/* We poll the bitbanger 40 times a second as it's slow */
+			key_poll();
 		}
 	/* The TMS9918A is our second best choice as the CTC must be wired
 	   right and may not be wired as we need it */
 	} else if (ti_r & 0x80) {
-		/* Running as a home computer not serial */
-		if (zxkey_present)
-			zxkey_poll();
-		if (ps2kbd_present)
-			ps2kbd_poll();
+		key_poll();
 		/* We are using the TMS9918A as a timer */
 		timerct++;
 		if (timerct == 6) {	/* Always NTSC */
 			do_timer_interrupt();
 			timerct = 0;
 		}
+#ifdef CONFIG_RTC_DS12885
+	/* Otherwise use DS12885 RTC if present */
+	} else if (timer_source == TIMER_DS12885) {
+		/* If IRQF and PF flags are set, interrupt is from 64 Hz signal */
+		if (ds12885_interrupt() & (IRQF+PF)) {
+			timerct++;
+			/* 7 ticks = 109 ms; 6 ticks = 93.7 ms;
+			 * (7+6+6+7+6) * 64 Hz = 500.0 ms */
+			switch (timerct) {
+				case 7: case 13: case 19: case 26:
+					do_timer_interrupt();
+					break;
+				case 32:
+					do_timer_interrupt();
+					timerct = 0;
+					break;
+			}
+		}
+#endif
 	/* If not and we have no QUART then pray the CTC works */
 	} else if (timer_source == TIMER_CTC) {
 		uint8_t n = 255 - in(ctc_port + 3);
 		out(ctc_port + 3, 0x47);
 		out(ctc_port +3, 0xFF);
 		timer_tick(n);
+		key_poll();
 	}
+	/* Poll the hardware PS/2 every interrupt as it may be the actual source */
+	ps2_int();
+	/* Soft ZX81 helper */
+	if (soft81_on)
+		softzx81_int();
 }
 
 
@@ -198,7 +242,7 @@ void platform_interrupt(void)
  *	the runtime
  */
 
-int strlen(const char *p)
+size_t strlen(const char *p)
 {
 	int len = 0;
 	while(*p++)

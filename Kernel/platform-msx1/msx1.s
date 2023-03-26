@@ -24,11 +24,11 @@
 	    .globl _vdp_wipe_consoles
 
             ; exported debugging tools
-            .globl _platform_monitor
+            .globl _plt_monitor
             .globl outchar
 
             .globl unix_syscall_entry
-            .globl _platform_reboot
+            .globl _plt_reboot
 	    .globl nmi_handler
 	    .globl null_handler
 	    .globl map_process_always
@@ -60,6 +60,17 @@
             .include "kernel.def"
             .include "../kernel-z80.def"
 
+
+	    .globl _bufpool
+	    .area _BUFFERS
+
+_bufpool:
+	    .ds BUFSIZE * NBUFS
+
+; Just so we don't pack the binary
+
+		.area _PAGE0
+
 ; -----------------------------------------------------------------------------
 ; COMMON MEMORY BANK (0xF000 upwards)
 ; -----------------------------------------------------------------------------
@@ -71,12 +82,12 @@ _int_disabled:
 	   .db 1
 
 ; Ideally return to any debugger/monitor
-_platform_monitor:
+_plt_monitor:
 	    di
 	    halt
 
 
-_platform_reboot:
+_plt_reboot:
 ;FIXME: TODO
 	    di
 	    halt

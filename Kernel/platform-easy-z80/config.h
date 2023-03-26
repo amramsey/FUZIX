@@ -2,14 +2,10 @@
 
 /* Set this if you have the RC2014 CF adapter at 0x10/0x90 */
 #define CONFIG_RC2014_CF
-/* Set this to be able to do networking over the second serial port */
-/* Need to do the banked network rework before this will work */
-#undef CONFIG_RC2014_NET
 /* Set this if you have the 8255 IDE adapter (mutually exclusive of RC2014_CF) */
 #undef CONFIG_RC2014_PPIDE
 /* Set this if you have the floppy interface */
 #undef CONFIG_RC2014_FLOPPY
-
 
 /*
  *	Turn selections into system level defines
@@ -21,12 +17,6 @@
 #ifdef CONFIG_RC2014_PPIDE
 #define CONFIG_IDE
 #define CONFIG_PPIDE
-#endif
-#ifdef CONFIG_RC2014_NET
-/* Core Networking support */
-#define CONFIG_NET
-/* User mode uIP TCP/IP daemon */
-#define CONFIG_NET_NATIVE
 #endif
 #ifdef CONFIG_RC2014_FLOPPY
 #define CONFIG_FLOPPY
@@ -88,6 +78,7 @@ extern uint16_t swap_dev;
 #define MAX_BLKDEV 2	    /* 2 IDE */
 
 /* On-board DS1302, we can read the time of day from it */
+#define CONFIG_RTC_DS1302
 #define CONFIG_RTC
 /* The DS1302 reading is painfully slow - resync only every 20 seconds */
 #define CONFIG_RTC_INTERVAL	200
@@ -104,4 +95,4 @@ extern uint16_t swap_dev;
 
 #define TTYDEV   BOOT_TTY /* Device used by kernel for messages, panics */
 
-#define platform_copyright()		// for now
+#define plt_copyright()		// for now

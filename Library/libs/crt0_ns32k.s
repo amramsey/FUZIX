@@ -1,20 +1,18 @@
-	.globl _start
+	.globl __start
 	.globl ___argv
 	.globl _environ
 
-	.data
-
-_environ:
-	.long 0
-
 	.text
 
-_start:
-	enter [],0
+__start:
 	jsr ___stdio_init_vars
-	addr 8(fp),_environ(pc)
-	movw 4(fp),___argv(pc)
+	sprd sp,r0
+	addr 8(r0),_environ(pc)
+	movd 4(r0),___argv(pc)
 	jsr _main
-	movw r0,tos
-	exit []
+	movd r0,tos
 	jsr _exit
+
+	.data
+_environ:
+	.long 0

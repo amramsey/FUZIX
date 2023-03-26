@@ -4,8 +4,8 @@
 #include <printf.h>
 #include <device.h>
 #include <devtty.h>
-#include <carts.h>
 #include <blkdev.h>
+#include <carts.h>
 
 /*
  * Map handling: We have flexible paging. Each map table consists of a set of pages
@@ -13,6 +13,8 @@
  */
 
 extern uint8_t internal32k;
+extern uint16_t framedet;
+extern uint8_t sys_hz;
 
 void pagemap_init(void)
 {
@@ -31,15 +33,14 @@ void pagemap_init(void)
 #else
 		pagemap_add(i);
 #endif
-
-#ifdef SWAPDEV
-	for (i = 0; i < MAX_SWAPS; i++)
-		swapmap_init(i);
-#endif
 }
 
-uint8_t platform_param(char *p)
+uint8_t plt_param(char *p)
 {
+	if (strcmp(p, "over") == 0 || strcmp(p, "overclock") == 0) {
+		*((volatile uint8_t *)0xFFD7) = 0;
+		return 1;
+	}
 	return 0;
 }
 
@@ -63,6 +64,7 @@ struct cart_rom_id carts[] = {
 	{ 0xB61B, CART_HDBDOS, "HDBDOS" },
 	{ 0xCF55, CART_HDBDOS, "HDBDOS" },
 	{ 0xE1BA, CART_ORCH90, "Orchestra-90 CC" },
+	{ 0x933E, CART_SDBOOT, "SDBOOT" },
 	{ 0x0000, 0, "No ROM" }
 };
 
@@ -129,7 +131,12 @@ void map_init(void)
 	uint16_t hash;
 	struct cart_rom_id *rom;
 
-	kprintf("%s system.\n", sysname[system_id]);
+	if (framedet >= 0x0500)
+		sys_hz = 5;
+	else
+		sys_hz = 6;
+	kprintf("%d0Hz %s system.\n", sys_hz, sysname[system_id]);
+
 	if (mpi_present()) {
 		kputs("MPI cartridge detected.\n");
 		cartslots = 4;

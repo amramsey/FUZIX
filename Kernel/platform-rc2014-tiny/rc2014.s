@@ -10,15 +10,16 @@
 	.globl map_process
 	.globl map_process_always
 	.globl map_kernel_di
+	.globl map_kernel_restore
 	.globl map_process_di
 	.globl map_process_always_di
 	.globl map_save_kernel
 	.globl map_restore
 	.globl map_for_swap
 	.globl map_buffers
-	.globl platform_interrupt_all
-	.globl _platform_reboot
-	.globl _platform_monitor
+	.globl plt_interrupt_all
+	.globl _plt_reboot
+	.globl _plt_monitor
 	.globl _bufpool
 	.globl _int_disabled
 
@@ -264,10 +265,10 @@ sio_setup:
 ;=========================================================================
         .area _CODE
 
-_platform_monitor:
+_plt_monitor:
 	di
 	halt
-_platform_reboot:
+_plt_reboot:
 	call map_kernel
 	rst 0
 
@@ -281,7 +282,7 @@ _platform_reboot:
 _int_disabled:
 	.db 1
 
-platform_interrupt_all:
+plt_interrupt_all:
 	ret
 
 ; install interrupt vectors
@@ -410,6 +411,7 @@ map_process_always_di:
 map_buffers:
 map_kernel:
 map_kernel_di:
+map_kernel_restore:
 	push af
 	xor a
 	call rom_control

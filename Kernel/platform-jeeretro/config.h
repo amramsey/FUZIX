@@ -1,7 +1,8 @@
-/* We have an RTC */
+
 #define CONFIG_RTC
 /* And we can read ToD from it */
 #define CONFIG_RTC_FULL
+#define CONFIG_RTC_INTERVAL	10
 /* Enable to make ^Z dump the inode table for debug */
 #undef CONFIG_IDUMP
 /* Enable to make ^A drop back into the monitor */
@@ -15,8 +16,6 @@
 /* 8 60K banks, 1 is kernel */
 #define MAX_MAPS	2
 #define MAP_SIZE	0xF000U
-/* Level 2 feature set */
-#define CONFIG_LEVEL_2
 /* Networking (not usable yet but for debug/development) */
 #undef CONFIG_NET
 #undef CONFIG_NET_NATIVE
@@ -53,8 +52,8 @@
 #define NBUFS    8	  /* Number of block buffers */
 #define NMOUNTS	 4	  /* Number of mounts at a time */
 
-#define platform_discard()
-#define platform_copyright()
+#define plt_discard()
+#define plt_copyright()
 
 //#define BOOTDEVICENNAMES "hd#,fd#"
 #define BOOTDEVICE 0x00

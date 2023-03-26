@@ -94,10 +94,8 @@ void create_init(void)
 		*j = NO_FILE;
 
 	makeproc(init_process, &udata);
-	init_process->p_status = P_RUNNING;
 
 	udata.u_insys = 1;
-
 	init_process->p_status = P_RUNNING;
 
 	/* Poke the execve arguments into user data space so _execve() can read them back */
@@ -176,7 +174,7 @@ static uint8_t system_param(char *p)
 		}
 	}
 	/* FIXME: Parse init=path ?? */
-	return platform_param(p);
+	return plt_param(p);
 }
 
 /* Parse other arguments */
@@ -336,7 +334,7 @@ void fuzix_main(void)
 {
 	struct mount *m;
 	/* setup state */
-	inint = false;
+	udata.u_ininterrupt = 0;
 	udata.u_insys = true;
 
 #ifdef PROGTOP		/* FIXME */
@@ -354,13 +352,13 @@ void fuzix_main(void)
 			"Copyright (c) 1988-2002 by H.F.Bower, D.Braun, S.Nitschke, H.Peraza\n"
 			"Copyright (c) 1997-2001 by Arcady Schekochikhin, Adriano C. R. da Cunha\n"
 			"Copyright (c) 2013-2015 Will Sowerbutts <will@sowerbutts.com>\n"
-			"Copyright (c) 2014-2021 Alan Cox <alan@etchedpixels.co.uk>\nDevboot\n",
+			"Copyright (c) 2014-2023 Alan Cox <alan@etchedpixels.co.uk>\nDevboot\n",
 			sysinfo.uname);
 
 	set_cpu_type();
 	sysinfo.cpu[0] = sys_cpu_feat;
 	sysinfo.cputype = sys_cpu;
-	platform_copyright();
+	plt_copyright();
 #ifndef SWAPDEV
 #ifdef PROC_SIZE
 	maxproc = procmem / PROC_SIZE;
@@ -391,8 +389,12 @@ void fuzix_main(void)
 	/* runtime configurable, defaults to build time setting */
 	ticks_per_dsecond = TICKSPERSEC / 10;
 
+	/* There are some setups we delay the EI until after we've dumped the
+	   discard */
+#ifndef CONFIG_PLATFORM_LATE_EI
 	kputs("Enabling interrupts ... ");
 	__hard_ei();		/* Physical interrupts on */
+#endif
 	kputs("ok.\n");
 
 	/* initialise hardware devices */

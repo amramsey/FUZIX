@@ -5,7 +5,7 @@
 #include <ds1302.h>
 #include <devide.h>
 #include <blkdev.h>
-#include <rc2014.h>
+#include <rcbus.h>
 #include "config.h"
 
 void map_init(void)
@@ -17,7 +17,7 @@ void map_init(void)
 		kputs("DS1302 detected at 0xC0.\n");
 	/* Default clashes with the CF adapter for Simple 80 */
 	if (ctc_present) {
-		platform_tick_present = 1;
+		plt_tick_present = 1;
 		kputs("Z80 CTC detected at 0xD0.\n");
 	}
 }

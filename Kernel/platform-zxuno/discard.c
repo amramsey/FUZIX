@@ -30,7 +30,7 @@ void pagemap_init(void)
  * This file is part of the Linux-8086 C library and is distributed
  * under the GNU Library General Public License.
  */
-static int strcmp(const char *d, const char *s)
+int strcmp(const char *d, const char *s)
 {
 	register char *s1 = (char *) d, *s2 = (char *) s, c1, c2;
 
@@ -38,7 +38,7 @@ static int strcmp(const char *d, const char *s)
 	return c1 - c2;
 }
 
-uint8_t platform_param(char *p)
+uint8_t plt_param(char *p)
 {
 	return 0;
 }
@@ -48,6 +48,6 @@ void map_init(void)
 {
 }
 
-void platform_copyright(void)
+void plt_copyright(void)
 {
 }

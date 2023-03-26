@@ -12,6 +12,8 @@
 #include <rtc.h>
 #include <ds1302.h>
 
+#ifdef CONFIG_RTC_DS1302
+
 uint8_t ds1302_present;
 uint8_t rtc_defer;
 
@@ -23,15 +25,15 @@ void ds1302_send_byte(uint_fast8_t byte)
     kprintf("ds1302: send byte 0x%x\n", byte);
 #endif
     /* drive the data pin */
-    ds1302_set_pin_data_driven(true);
+    ds1302_set_driven(true);
 
     /* clock out one byte, LSB first */
     for(i=0; i<8; i++){
-        ds1302_set_pin_clk(false);
+        ds1302_set_clk(false);
         /* for data input to the chip the data must be valid on the rising edge of the clock */
-        ds1302_set_pin_data(byte & 1);
+        ds1302_set_data(byte & 1);
         byte >>= 1;
-        ds1302_set_pin_clk(true);
+        ds1302_set_clk(true);
     }
 }
 
@@ -40,18 +42,18 @@ uint_fast8_t ds1302_receive_byte(void)
     uint8_t i, b;
 
     /* tri-state the data pin */
-    ds1302_set_pin_data_driven(false);
+    ds1302_set_driven(false);
 
     /* clock in one byte, LSB first */
     b = 0;
     for(i=0; i<8; i++){
-        ds1302_set_pin_clk(false);
+        ds1302_set_clk(false);
         b >>= 1;
         /* data output from the chip is presented on the falling edge of each clock */
         /* note that output pin goes high-impedance on the rising edge of each clock */
-        if(ds1302_get_pin_data())
+        if(ds1302_get_data())
             b |= 0x80;
-        ds1302_set_pin_clk(true);
+        ds1302_set_clk(true);
     }
 
     return b;
@@ -59,11 +61,11 @@ uint_fast8_t ds1302_receive_byte(void)
 
 void ds1302_write_register(uint_fast8_t reg, uint_fast8_t val)
 {
-    ds1302_set_pin_ce(true);
+    ds1302_set_ce(true);
     ds1302_send_byte(reg);
     ds1302_send_byte(val);
-    ds1302_set_pin_ce(false);
-    ds1302_set_pin_clk(false);
+    ds1302_set_ce(false);
+    ds1302_set_clk(false);
 }
 uint_fast8_t uint8_from_bcd(uint_fast8_t value)
 {
@@ -75,9 +77,9 @@ void ds1302_read_clock(uint8_t *buffer, uint_fast8_t length)
     uint8_t i;
     irqflags_t irq = di();
 
-    platform_ds1302_setup();
+    plt_ds1302_setup();
 
-    ds1302_set_pin_ce(true);
+    ds1302_set_ce(true);
     ds1302_send_byte(0x81 | 0x3E); /* burst read all calendar data */
     for(i=0; i<length; i++){
         buffer[i] = ds1302_receive_byte();
@@ -85,10 +87,10 @@ void ds1302_read_clock(uint8_t *buffer, uint_fast8_t length)
         kprintf("ds1302: received byte 0x%x index %d\n", buffer[i], i);
 #endif
     }
-    ds1302_set_pin_clk(false);
-    ds1302_set_pin_ce(false);
+    ds1302_set_clk(false);
+    ds1302_set_ce(false);
 
-    platform_ds1302_restore();
+    plt_ds1302_restore();
 
     irqrestore(irq);
 }
@@ -98,11 +100,11 @@ void ds1302_read_clock(uint8_t *buffer, uint_fast8_t length)
 static uint8_t ds1302_read_register(uint_fast8_t reg)
 {
     uint8_t val;
-    ds1302_set_pin_ce(true);
+    ds1302_set_ce(true);
     ds1302_send_byte(reg);
     val = ds1302_receive_byte();
-    ds1302_set_pin_ce(false);
-    ds1302_set_pin_clk(false);
+    ds1302_set_ce(false);
+    ds1302_set_clk(false);
     return val;
 }
 
@@ -113,11 +115,11 @@ uint_fast8_t rtc_nvread(uint_fast8_t r)
 
     irq = di();
 
-    platform_ds1302_setup();
+    plt_ds1302_setup();
 
     v = ds1302_read_register(0xC1 + 2 * r);
 
-    platform_ds1302_restore();
+    plt_ds1302_restore();
 
     irqrestore(irq);
     return v;
@@ -130,7 +132,7 @@ void rtc_nvwrite(uint_fast8_t r, uint_fast8_t v)
 
     irq = di();
 
-    platform_ds1302_setup();
+    plt_ds1302_setup();
     
     n = ds1302_read_register(0x8F);
 
@@ -144,12 +146,12 @@ void rtc_nvwrite(uint_fast8_t r, uint_fast8_t v)
     if (n & 0x80)
         ds1302_write_register(0x8E, n);
 
-    platform_ds1302_restore();
+    plt_ds1302_restore();
 
     irqrestore(irq);
 }
 
-int platform_rtc_ioctl(uarg_t request, char *data)
+int plt_rtc_ioctl(uarg_t request, char *data)
 {
     struct cmos_nvram *rtc = (struct cmos_nvram *)data;
     uint16_t r;
@@ -180,7 +182,7 @@ int platform_rtc_ioctl(uarg_t request, char *data)
 #endif
 
 /* define CONFIG_RTC in platform's config.h to hook this into timer.c */
-uint_fast8_t platform_rtc_secs(void)
+uint_fast8_t plt_rtc_secs(void)
 {
     uint8_t buffer;
     /* On some platforms the RTC is accessed via a shared interface, so
@@ -195,7 +197,7 @@ uint_fast8_t platform_rtc_secs(void)
 static uint8_t rtc_buf[8];
 
 /* Full RTC support (for read - no write yet) */
-int platform_rtc_read(void)
+int plt_rtc_read(void)
 {
 	uint16_t len = sizeof(struct cmos_rtc);
 	uint16_t y;
@@ -239,8 +241,10 @@ int platform_rtc_read(void)
 	return len;
 }
 
-int platform_rtc_write(void)
+int plt_rtc_write(void)
 {
 	udata.u_error = EOPNOTSUPP;
 	return -1;
 }
+
+#endif

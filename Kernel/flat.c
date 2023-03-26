@@ -36,6 +36,14 @@
 
 #define MAX_BLOCKS	14	/* Packs to a power of two */
 
+#ifdef CONFIG_SPLIT_ID
+#define COPY_BASE	1	/* First block we dup the memory for */
+#define MALLOC_BASE	2	/* First block for malloc use */
+#else
+#define COPY_BASE	0	/* First block we dup the memory for */
+#define MALLOC_BASE	2	/* First block for malloc use */
+#endif
+
 struct memblk {
 	void *start;
 	void *end;
@@ -53,7 +61,10 @@ static struct mem memblock[PTABSIZE];
 
 extern struct u_data *udata_shadow;
 
-static void mem_free(struct mem *m)
+/* We are called with an indidcator of whether this is the last user
+   of the page sets. If it is we can free the shared code, if it isn't
+   we can't */
+static void mem_free(struct mem *m, unsigned base)
 {
 	struct memblk *p = &m->memblk[0];
 	int i;
@@ -61,7 +72,7 @@ static void mem_free(struct mem *m)
 		panic("mref");
 	m->users--;
 	if (m->users == 0) {
-		for (i = 0; i < MAX_BLOCKS; i++) {
+		for (i = base; i < MAX_BLOCKS; i++) {
 			kfree_s(p->start, p->end - p->start);
 			p->start = NULL;
 			p++;
@@ -87,9 +98,8 @@ static struct mem *mem_alloc(void)
 static void *kdup(void *p, void *e, uint8_t owner)
 {
 	void *n = kmalloc(e - p, owner);
-	if (n) {
+	if (n)
                 copy_blocks(n, p, (e - p) >> 9);
-	}
 	return n;
 }
 
@@ -100,11 +110,15 @@ static struct mem *mem_clone(struct mem *m, uint8_t owner)
 	struct memblk *t = &n->memblk[0];
 	int i;
 	/* FIXME: need a per block 'RO' flag for non-copied blocks */
-	for (i = 0; i < MAX_BLOCKS; i++) {
+	for (i = 0; i < COPY_BASE; i++) {
+		t->start = p->start;
+		t->end = p->end;
+	}
+	for (i = COPY_BASE; i < MAX_BLOCKS; i++) {
 		if (p->start) {
 			t->start = kdup(p->start, p->end, owner);
 			if (t->start == NULL) {
-				mem_free(n);
+				mem_free(n, COPY_BASE);
 				return NULL;
 			}
 			t->end = t->start + (p->end - p->start);
@@ -123,7 +137,7 @@ static void mem_switch(struct mem *a, struct mem *b)
 	struct memblk *t2 = &b->memblk[0];
 	unsigned int i;
 
-	for (i = 0; i < MAX_BLOCKS; i++) {
+	for (i = COPY_BASE; i < MAX_BLOCKS; i++) {
 		if (t1->start)
 			swap_blocks(t1->start, t2->start,
 				    (t1->end - t1->start) >> 9);
@@ -138,7 +152,7 @@ static void mem_copy(struct mem *to, struct mem *from)
 	struct memblk *t2 = &to->memblk[0];
 	unsigned int i;
 
-	for (i = 0; i < MAX_BLOCKS; i++) {
+	for (i = COPY_BASE; i < MAX_BLOCKS; i++) {
 		if (t1->start)
 			copy_blocks(t2->start, t1->start,
 				(t1->end - t1->start) >> 9);
@@ -166,7 +180,7 @@ int pagemap_alloc(ptptr p)
 	kprintf("%d: pagemap_alloc %p\n", proc, p);
 #endif
 	p->p_page = nproc;
-	if (platform_udata_set(p))
+	if (plt_udata_set(p))
 		return ENOMEM;
 	/* Init is special */
 	if (p->p_pid == 1) {
@@ -183,6 +197,7 @@ int pagemap_alloc(ptptr p)
 		mb->end = mb->start + 8192;
 		if (mb->start == 0)
 			panic("alloc");
+		udata.u_codebase = (uaddr_t)mb->start;
 #ifdef DEBUG
 		kprintf("init at %p\n", mb->start);
 #endif
@@ -223,7 +238,7 @@ void pagemap_switch(ptptr p, int death)
 	int lproc;
 
 #ifdef DEBUG
-	kprintf("%d: ps:store %p mem %p\n", proc, store[proc], mem[proc]);
+	kprintf("%d: ps:store %p mem %p death %d\n", proc, store[proc], mem[proc], death);
 #endif
 	/* We have the right map (unique or we ran the forked copy last) */
 	if (store[proc] == mem[proc]) {
@@ -290,21 +305,20 @@ void pagemap_free(ptptr p)
 		if (m->users > 1) {
 			int n = pagemap_sharer(m);
 #ifdef DEBUG
-			kprintf
-			    ("%d: pagemap_free: busy non live - giving away to %d.\n",
+			kprintf("%d: pagemap_free: busy non live - giving away to %d.\n",
 			     proc, n);
 #endif
 
 			pagemap_switch(&ptab[n], 1);
 			/* We gave our copy away, so free the store copy
 			   we just got donated */
-			mem_free(store[proc]);
+			mem_free(store[proc], COPY_BASE);
 		}
 #ifdef DEBUG
 		kprintf("%d: pagemap_free: own live copy.\n", proc);
 #endif
 		/* Drop the reference count on the mem */
-		mem_free(m);
+		mem_free(m, 0);
 		mem[proc] = NULL;
 		store[proc] = NULL;
 		return;
@@ -315,7 +329,8 @@ void pagemap_free(ptptr p)
 #ifdef DEBUG
 	kprintf("%d:pagemap_free:freeing our copy.\n", proc);
 #endif
-	mem_free(m);
+	/* If it was not a live copy then it wasn't the only copy */
+	mem_free(m, COPY_BASE);
 	store[proc] = NULL;
 	mem[proc] = NULL;
 }
@@ -327,15 +342,14 @@ void pagemap_free(ptptr p)
    TODO: support multiple blocks and allocate code/data separately allowing
    for the alignment. We should probably trim the alignment to 64 bytes as
    well
+*/
 
-   Supporting re-entrant binaries will need the binaries to have the data
-   aligned so maybe force it in the link ? */
-int pagemap_realloc(struct exec *hdr, usize_t size)
+int pagemap_realloc(struct exec *a, usize_t unused)
 {
 	unsigned int proc = udata.u_page;
 	struct memblk *mb;
 	struct mem *m;
-
+	usize_t csize, size;
 
 	m = mem_alloc();
 
@@ -345,16 +359,66 @@ int pagemap_realloc(struct exec *hdr, usize_t size)
 
 	mb = &m->memblk[0];
 
-	/* Snap to a block boundary for a fast memcpy/swap */
+	/* On a system where we can split code from data the code
+	   ends up shared across fork and we occupy two memory blocks
+	   independently allocated. On a system where we can't we
+	   allocate a single block for everything and the database is
+	   just offset */
+#ifdef CONFIG_SPLIT_ID
+	/* Pad to our block size */
+	csize = (a->a_text + 511) & ~511;
+	/* Again pad to our block size */
+	size = a->a_data + a->a_bss + a->stacksize;
 	size = (size + 511) & ~511;
 
-	mb->start = kmalloc(size, proc);
-	mb->end = mb->start + size;
-
-	if (mb->start == NULL)
+	mb->start = kmalloc(csize, proc);
+	if (mb->start == NULL) {
+		mem_free(m, 0);
 		return ENOMEM;
+	}
+	mb->end = mb->start + a->a_text;
+	kprintf("Code for %x bytes at %p\n", csize, mb->start);
+
+
+	mb++;
+
+	mb->start = kmalloc(size, proc);
+	if (mb->start == NULL) {
+		mem_free(m, 0);
+		return ENOMEM;
+	}
+	mb->end = mb->start + size;
+	kprintf("Data for %x bytes at %p\n", size, mb->start);
+
 	/* Free the old map */
 	pagemap_free(udata.u_ptab);
+
+	/* Set up the new map and pointers */
+	udata.u_database = (uaddr_t)mb->start;
+	mb--;
+	udata.u_codebase = (uaddr_t)mb->start;
+#ifdef DEBUG
+	kprintf("code %p - %p, data %p - %p\n", udata.u_codebase, udata.u_codebase + csize - 1, udata.u_database, udata.u_database + size - 1);
+#endif
+#else
+	size = a->a_text + a->a_data + a->a_bss + a->stacksize;
+	size = (size + 511) & ~511;
+	mb->start = kmalloc(size, proc);
+	if (mb->start == NULL) {
+		mem_free(m, 0);
+		return ENOMEM;
+	}
+	mb->end = mb->start + size;
+	pagemap_free(udata.u_ptab);
+	udata.u_codebase = (uaddr_t)mb->start;
+	udata.u_database = udata.u_codebase + a->a_text;
+#ifdef DEBUG
+	kprintf("code %p data %p - %p\n", udata.u_codebase, udata.u_database, udata.u_codebase + size - 1);
+#endif
+#endif
+	/* Tell the exec code where the top of the resulting memory (and
+	   thus where to build the stack) is */
+	udata.u_top = udata.u_database + a->a_data + a->a_bss + a->stacksize;
 	store[proc] = mem[proc] = m;
 	return 0;
 }
@@ -362,14 +426,6 @@ int pagemap_realloc(struct exec *hdr, usize_t size)
 usize_t pagemap_mem_used(void)
 {
 	return kmemused() >> 10;	/* In kBytes */
-}
-
-/* Extra helper for exec32 */
-
-uaddr_t pagemap_base(void)
-{
-	unsigned int proc = udata.u_page;
-	return (uaddr_t)mem[proc]->memblk[0].start;
 }
 
 /* The extra syscalls for the pool allocator */
@@ -388,8 +444,8 @@ arg_t _memalloc(void)
 	struct memblk *m = &mem[proc]->memblk[0];
 	int i;
 
-	/* Map 0 is the image, the user doesn't get to play with that one */
-	for (i = 1; i < MAX_BLOCKS; i++) {
+	/* Map 0 and 1 are the image, the user doesn't get to play with that one */
+	for (i = MALLOC_BASE; i < MAX_BLOCKS; i++) {
 		if (m->start == NULL) {
 			m->start = kmalloc(size, proc);
 			if (m->start == NULL) {
@@ -421,7 +477,7 @@ arg_t _memfree(void)
 	struct memblk *m = &mem[proc]->memblk[0];
 	int i;
 
-	for (i = 1; i < MAX_BLOCKS; i++) {
+	for (i = MALLOC_BASE; i < MAX_BLOCKS; i++) {
 		if (m->start == base) {
 			kfree_s(m->start, m->end - m->start);
 			m->start = NULL;
@@ -440,10 +496,8 @@ arg_t _memfree(void)
  *	two allocations are adjacent, therefore we don't allow a copy across
  *	what happens to be a join of two banks. We could fix this but it's not
  *	clear it would be wise!
- *
- *	FIXME: need to fix this due to code/data alignment ?
  */
-usize_t valaddr(const uint8_t *pp, usize_t l)
+usize_t valaddr(const uint8_t *pp, usize_t l, uint_fast8_t is_write)
 {
 	const void *p = pp;
 	const void *e = p + l;
@@ -451,6 +505,11 @@ usize_t valaddr(const uint8_t *pp, usize_t l)
 	unsigned int n = 0;
 	struct memblk *m = &mem[proc]->memblk[0];
 
+#ifdef CONFIG_SPLIT_ID
+	/* First block is R/O */
+	if (is_write)
+		n++;
+#endif		
 	while (n < MAX_BLOCKS) {
 		/* Found the right block ? */
 		if (m->start && p >= m->start && p < m->end) {
@@ -463,6 +522,9 @@ usize_t valaddr(const uint8_t *pp, usize_t l)
 			/* Return the size we can copy */
 			return e - p;
 		}
+/*		if (m->start)
+			kprintf("%p not in %p to %p\n",
+				pp, m->start, m->end); */
 		m++;
 		n++;
 	}
@@ -470,11 +532,21 @@ usize_t valaddr(const uint8_t *pp, usize_t l)
 	return 0;
 }
 
+usize_t valaddr_r(const uint8_t *pp, usize_t l)
+{
+	return valaddr(pp, l, 0);
+}
+
+usize_t valaddr_w(const uint8_t *pp, usize_t l)
+{
+	return valaddr(pp, l, 1);
+}
+
 #ifdef CONFIG_LEVEL_2		/* Coredump support */
 
 /* Write out each segment of memory we have. We don't do anything with the flags
    yet - that will comne later */
-void coredump_memory_image(inoptr ino)
+void coredump_image(inoptr ino)
 {
 	unsigned int i = 0;
 	unsigned int proc = udata.u_page;

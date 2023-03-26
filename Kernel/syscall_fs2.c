@@ -234,7 +234,7 @@ arg_t _fchmod(void)
 		return (-1);
 
 	ret = chmod_op(ino);
-	i_unlock_deref(ino);
+	i_unlock(ino);
 	return ret;
 }
 
@@ -341,7 +341,7 @@ arg_t _utime(void)
 	if (buf) {
 	        if (ino->c_node.i_uid != udata.u_euid && esuper())
 			goto out;
-		if (!valaddr(buf, 2 * sizeof(time_t)))
+		if (!valaddr_r(buf, 2 * sizeof(time_t)))
 			goto out2;
 		uget(buf, t, 2 * sizeof(time_t));
 	} else {
@@ -426,6 +426,7 @@ arg_t _statfs(void)
 	if (!(ino  = n_open(path, NULLINOPTR)))
 		return -1;
         m = fs_tab_get(ino->c_dev);
+        i_deref(ino);
         uputw(m->m_flags, buf + sizeof(struct filesys));
 	return uput((uint8_t *) &m->m_fs, buf, sizeof(struct filesys));
 }

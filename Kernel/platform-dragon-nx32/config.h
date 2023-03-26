@@ -61,6 +61,9 @@
                           /* In this case, the default is the first TTY device */
                             /* Temp FIXME set to serial port for debug ease */
 
+#define CONFIG_INPUT			/* Input device for joystick */
+#define CONFIG_INPUT_GRABMAX	3
+
 /* We need a tidier way to do this from the loader */
 #define CMDLINE	NULL	  /* Location of root dev name */
 
@@ -69,7 +72,7 @@
 #define NDEVS    2        /* Devices 0..NDEVS-1 are capable of being mounted */
                           /*  (add new mountable devices to beginning area.) */
 #define TTYDEV   BOOT_TTY /* Device used by kernel for messages, panics */
-#define NBUFS    5       /* Number of block buffers at boot time */
+#define NBUFS    4       /* Number of block buffers at boot time */
 #define NMOUNTS	 2	  /* Number of mounts at a time */
 #define swap_map(x)	((uint8_t *)(x))
 
@@ -81,8 +84,8 @@
 
 /* Remember to update platform-dragon-nx32/kernel.defs to match */
 
-extern void platform_discard(void);
+extern void plt_discard(void);
 
-#define platform_copyright()		/* for now */
+#define plt_copyright()		/* for now */
 
 #define BOOTDEVICENAMES "hd#,fd#"

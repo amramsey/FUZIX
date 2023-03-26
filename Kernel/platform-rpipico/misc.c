@@ -15,9 +15,9 @@ uint16_t swap_dev = 0xffff;
 
 void set_cpu_type(void) {}
 void map_init(void) {}
-void platform_discard(void) {}
-void platform_monitor(void) {}
-void platform_reboot(void) {}
+void plt_discard(void) {}
+void plt_monitor(void) {}
+void plt_reboot(void) {}
 void program_vectors(uint16_t* pageptr) {}
 
 uaddr_t pagemap_base(void)
@@ -25,7 +25,7 @@ uaddr_t pagemap_base(void)
     return PROGBASE;
 }
 
-usize_t valaddr(const uint8_t *base, usize_t size)
+usize_t valaddr(const uint8_t *base, usize_t size, uint_fast8_t is_write)
 {
         if (base + size < base)
                 size = MAXUSIZE - (usize_t)base + 1;
@@ -38,6 +38,15 @@ usize_t valaddr(const uint8_t *base, usize_t size)
         return size;
 }
 
+usize_t valaddr_r(const uint8_t *pp, usize_t l)
+{
+	return valaddr(pp, l, 0);
+}
+
+usize_t valaddr_w(const uint8_t *pp, usize_t l)
+{
+	return valaddr(pp, l, 1);
+}
 
 /* vim: sw=4 ts=4 et: */
 

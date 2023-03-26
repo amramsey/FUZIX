@@ -24,11 +24,10 @@
 	.globl _udata
         .globl _runticks
         .globl _chksigs
-        .globl _inint
         .globl _getproc
-        .globl _platform_monitor
+        .globl _plt_monitor
         .globl _switchin
-        .globl _platform_switchout
+        .globl _plt_switchout
         .globl _dofork
 	.globl map_buffers
         .globl map_kernel
@@ -730,7 +729,7 @@ _swapout:
 ; possibly the same process, and switches it in.  When a process is
 ; restarted after calling switchout, it thinks it has just returned
 ; from switchout().
-_platform_switchout:
+_plt_switchout:
 	di
         ; save machine state
         ld hl, #0 ; return code set here is ignored, but _switchin can 
@@ -751,7 +750,7 @@ _platform_switchout:
         call _switchin
 
         ; we should never get here
-        jp _platform_monitor
+        jp _plt_monitor
 
 badswitchmsg: .ascii "_switchin: FAIL"
             .db 13, 10, 0
@@ -818,8 +817,8 @@ is_resident:
         ; memory and/or support swapping to disk?
         ;; ; Fix the moved page pointers
         ;; ; Just do one byte as that is all we use on this platform
-        ;; ld a, P_TAB__P_PAGE_OFFSET(ix)
-        ;; ld (U_DATA__U_PAGE), a
+        ld a, P_TAB__P_PAGE_OFFSET(ix)
+        ld (_udata + U_DATA__U_PAGE), a
 
         ; runticks = 0
         ld hl, #0
@@ -849,7 +848,7 @@ switchinfail:
         call outhl
         ld hl, #badswitchmsg
         call outstring
-        jp _platform_monitor
+        jp _plt_monitor
 
 map_kernel_restore:
 map_buffers:

@@ -64,23 +64,26 @@ outnewline:
 
 outcharhex:
 	pshb
-	lsrb
-	lsrb
-	lsrb
-	lsrb
+	psha
+	lsra
+	lsra
+	lsra
+	lsra
 	bsr outnibble
-	pulb
-	pshb
+	pula
+	psha
 	bsr outnibble
+	pula
 	pulb
 	rts
 
 outnibble:
-	andb #0x0F
-	cmpb #0x0A
+	anda #0x0F
+	cmpa #0x0A
 	blt outh2
-	addb #0x07
-outh2:	addb #0x30
+	adda #0x07
+outh2:	adda #0x30
+	tab
 outchar_call:
 	jmp outchar
 
@@ -92,69 +95,39 @@ outstring:
 	bra outstring
 
 outx:
+	pshx
 	xgdx
 	pshx		; actually the old D
 	bsr outcharhex
-	tab
+	tba
 	bsr outcharhex
 	pulx
 	xgdx
+	pulx
 outsdone:
 	rts
 
 outy:
+	pshy
 	xgdy
 	pshy		; actually the old D
 	bsr outcharhex
-	tab
+	tba
 	bsr outcharhex
 	puly
 	xgdy
+	puly
 	rts
 
 outd:
 	psha
 	pshb
 	bsr outcharhex
-	tab
+	tba
 	bsr outcharhex
 	pulb
 	pula
 	rts
-
-
-deliver_signals:
-	ldaa udata+U_DATA__U_CURSIG
-	bne deliver_signals_2
-signal_raced:
-	rts
-deliver_signals_2:
-	clr udata+U_DATA__U_CURSIG
-	tab
-	ldx #udata+U_DATA__U_SIGVEC
-	abx
-	abx
-	ldy 0,x
-	beq signal_raced
-	clr 0,x
-	clr 1,x
-	tab
-	clra
-	ldx PROGLOAD+16		; FIXME assumes binary at base address
-	; Stack the vector as well, needed for running 680x binaries
-	pshy
-	jsr ,x
-	pulx			; discard vector
-signal_return:
-	sei
-	sts udata+U_DATA__U_SYSCALL_SP
-	lds #kstack_top
-	jsr map_kernel_di
-	jsr chksigs
-	jsr map_process_always_di
-	lds udata+U_DATA__U_SYSCALL_SP
-	bra deliver_signals
-	
 
 ;
 ;	We are called from SWI. The stack holds 7 bytes of return
@@ -236,20 +209,40 @@ syscall_main:
 	staa 2,x
 	ldd udata+U_DATA__U_ERROR
 	std 3,x				; error in X
-	ldaa udata+U_DATA__U_CURSIG
-	bne via_signal
-	rti
-via_signal:
-	jsr deliver_signals_2
+rti_return:
+	ldab udata+U_DATA__U_CURSIG
+	beq no_signal
+	clr udata+U_DATA__U_CURSIG
+	ldx #udata+U_DATA__U_SIGVEC
+	abx
+	abx
+	ldy 0,x
+	beq no_signal
+	clr 0,x
+	clr 1,x
+	; Arguments to signal handler
+	clra
+	pshy
+	ldx PROGLOAD+16	; Helper vector FIXME: assumes loaded at base
+	; We are off the kernel stack at this point so we can
+	; enable interrupts and leap into userspace
+	cli
+	jsr ,x
+signal_return:
+	ins	; Drop the signal number argument
+	ins	; FIXME: shouldn't this be 2 bytes drop only CHECK
+	ins	; And the vector
+	ins
+no_signal:
 	rti
 
 doexec:
 	xgdx				; execute address into x
 	sei
+	clr udata+U_DATA__U_INSYS
 	jsr map_process_always
 	lds udata+U_DATA__U_ISP
 	des				; offset by 1 on the 680X
-	clr udata+U_DATA__U_INSYS
 	cli
 	pshx
 	pula				; high byte is our reloc base
@@ -262,7 +255,7 @@ trap_handler:
 	; Were we in kernel - if so die horribly
 	tst udata + U_DATA__U_INSYS
 	bne trap_illegal
-	tst inint
+	tst udata + U_DATA__U_ININTERRUPT
 	bne trap_illegal
 	; Kick the user up the backside with a SIGILL. If the return from
 	; it and didn't reset the handler then it will kill so it usually
@@ -293,7 +286,7 @@ trapx:
 	jsr outx
 	ldx #nlmsg
 	jsr outstring
-	jsr platform_monitor
+	jsr plt_monitor
 
 nmi_handler:
 	jsr map_kernel_di
@@ -370,10 +363,9 @@ interrupt_handler:
 
 	ldaa #1
 	staa udata+U_DATA__U_ININTERRUPT
-	staa inint
 
 	; Call the C code to process the interrupt
-	ldy #platform_interrupt
+	ldy #plt_interrupt
 	jsr call_c_irq
 
 	; Was the interrupt to kernel code ?
@@ -381,7 +373,6 @@ interrupt_handler:
 	bne iretk
 
 	; Interrupts from user code may pre-empt
-	clr inint
 	tst need_resched
 	bne preemption
 
@@ -393,8 +384,7 @@ interrupt_handler:
 	clr udata+U_DATA__U_ININTERRUPT
 	tst udata+U_DATA__U_INSYS
 	bne no_signals
-	; Signals are delivered off interrupts too
-	jsr deliver_signals
+	jmp rti_return
 no_signals:
 	rti
 	;
@@ -438,7 +428,7 @@ preemption:
 	bset P_TAB__P_FLAGS_OFFSET,x #PFL_BATCH
 not_running:
 	; Task switch
-	jsr platform_switchout
+	jsr plt_switchout
 	; Time will pass, things will run and eventually we will reappear
 	; here when we get rescheduled
 	clr udata+U_DATA__U_ININTERRUPT
@@ -450,9 +440,7 @@ not_running:
 	; Check for signals
 	ldaa udata+U_DATA__U_CURSIG
 	beq no_signals
-	jsr deliver_signals_2
-	; The RTI frame is top of our user stack
-	rti
+	jmp rti_return
 
 	.section .text
 

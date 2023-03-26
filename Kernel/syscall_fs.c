@@ -370,10 +370,12 @@ arg_t _unlink(void)
 
 	ino = n_open(path, &pino);
 
+	/* Node must exist and have a parent */
 	if (!(pino && ino)) {
-		if (pino)	/* parent exist */
+		if (pino)	/* parent exists */
 			i_deref(pino);
-		udata.u_error = ENOENT;
+		if (udata.u_error == 0)
+			udata.u_error = ENOENT;
 		return (-1);
 	}
 	i_lock(pino);
@@ -410,7 +412,8 @@ static arg_t readwrite(uint_fast8_t reading)
 	        return -1;
 	}
 
-	if (!valaddr(buf, nbytes))
+	/* Reading from disk is writing to user space and vice versa... */
+	if (!valaddr(buf, nbytes, reading))
 	        return -1;
 
 	/* Set up u_base, u_offset, ino; check permissions, file num. */
@@ -449,7 +452,7 @@ uint16_t nbytes;
  */
 arg_t _getdirent(void)
 {
-        if (nbytes < 32) {
+        if (nbytes < DIR_LEN) {
                 udata.u_error = ENOSPC;
                 return -1;
         }

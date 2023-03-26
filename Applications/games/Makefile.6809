@@ -1,22 +1,6 @@
 HOSTCC := $(CC)
-PLATFORM = 6809
-CC = m6809-unknown-gcc
-ASM = m6809-unknown-as
-AR = m6809-unknown-ar
-LINKER = m6809-unknown-ld
-CFLAGS = -I../../Library/include -I../../Library/include/6809
-LINKER_OPT = --oformat=raw -L../../Library/libs -lc6809 -ltermcap6809
-LINKER_FP_OPT = --oformat=raw -L../../Library/libs -lm6809 -lc6809
-LIBGCCDIR = $(dir $(shell $(CC) -print-libgcc-file-name))
-LINKER_OPT += -L$(LIBGCCDIR) -lgcc
-LINKER_OPT += --script=../util/$(TARGET).link
-LINKER_FP_OPT += -L$(LIBGCCDIR) -lgcc
-LINKER_FP_OPT += --script=../util/$(TARGET).link
-ASM_OPT = -o
-CRT0 = ../../Library/libs/crt0_6809.o
-CRT0NS = ../../Library/libs/crt0nostdio_6809.o
 
-.SUFFIXES: .c .o
+include $(FUZIX_ROOT)/Applications/rules.6809
 
 SRCSNS = qrun.c fortune.c z1.c z2.c z3.c z4.c z5.c z8.c
 
@@ -24,7 +8,7 @@ SRCS  = adv01.c adv02.c adv03.c adv04.c adv05.c adv06.c adv07.c \
         adv08.c adv09.c adv10.c adv11.c adv12.c adv13.c adv14a.c adv14b.c \
         myst01.c myst02.c myst03.c myst04.c myst05.c myst06.c myst07.c \
         myst08.c myst09.c myst10.c myst11.c fortune-gen.c startrek.c \
-	hamurabi.c advint.c cowsay.c taylormade.c
+	hamurabi.c advint.c cowsay.c taylormade.c dopewars.c ppt.c
 
 SRCSFP =
 
@@ -45,7 +29,7 @@ $(APPSFP): $(CRT0)
 $(APPSNS): $(CRT0NS)
 
 $(APPS) $(APPSNS): %: %.o
-	$(LINKER) -o $@ $(LINKER_OPT) $^
+	$(LINKER) -o $@ $(LINKER_OPT) -ltermcap6809 $^
 
 $(APPSFP): %: %.o
 	$(LINKER) -o $@ $(LINKER_FP_OPT) $^

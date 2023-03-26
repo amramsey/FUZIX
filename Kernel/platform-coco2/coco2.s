@@ -24,13 +24,12 @@
 
 	; imported
 	.globl unix_syscall_entry
-;FIX	.globl fd_nmi_handler
 	.globl null_handler
 	.globl _vtoutput
 
 	; exported debugging tools
-	.globl _platform_monitor
-	.globl _platform_reboot
+	.globl _plt_monitor
+	.globl _plt_reboot
 	.globl outchar
 	.globl ___hard_di
 	.globl ___hard_ei
@@ -77,7 +76,7 @@ init_early:
 init_hardware:
 	ldd #64
 	std _ramsize
-	ldd #32
+	ldd #28
 	std _procmem
 
 	; Turn on PIA  CB1 (50Hz interrupt)
@@ -85,20 +84,40 @@ init_hardware:
 	ora #1
 	sta 0xFF03
 	jsr _vtinit
+
+	; NTSC or PAL/SECAM ?
+	ldx	#0
+	lda	$ff02
+waitvb0
+	lda	$ff03
+	bpl	waitvb0		; wait for vsync
+	lda	$ff02
+waitvb2:
+	leax	1,x		; time until vsync starts
+	lda	$ff03
+	bpl	waitvb2
+	stx	_framedet
 	rts
 
-        .area .common
+	.globl _framedet
 
-_platform_reboot:
+_framedet:
+	.word	0
+
+        .area .page1
+; Borrow a tiny bit of page1 to get this low so it can turn the ROM back on
+
+_plt_reboot:
 	orcc #0x10
 	clr 0xFFBE
 	lda #0x7e
 	sta 0x0071		; in case IRQ left it looking valid
 	jmp [0xFFFE]
 
-_platform_monitor:
+	.area .common
+_plt_monitor:
 	orcc #0x10
-	bra _platform_monitor
+	bra _plt_monitor
 
 ___hard_di:
 	tfr cc,b		; return the old irq state
@@ -129,59 +148,6 @@ map_process_always:
 map_process_a:
 map_save:
 	rts
-
-
-	.area .discard
-;
-;	Helpers for the MPI and Cartridge Detect
-;
-;
-;	oldslot = mpi_set_slot(uint8_t newslot)
-;
-_mpi_set_slot:
-	tfr b,a
-	ldb 0xff7f
-	sta 0xff7f
-	rts
-;
-;	int8_t mpi_present(void)
-;
-_mpi_present:
-	lda 0xff7f	; Save bits
-	ldb #0xff	; Will get back 33 from an MPI cartridge
-	stb 0xff7f	; if the emulator is right on this
-	ldb 0xff7f
-	cmpb #0x33
-	bne nompi
-	clr 0xff7f	; Switch to slot 0
-	ldb 0xff7f
-	bne nompi
-	incb
-	sta 0xff7f	; Our becker port for debug will be on the default
-			; slot so put it back for now
-	rts		; B = 0
-nompi:	ldb #0
-	sta 0xff7f	; Restore bits just in case
-	rts
-
-	.area .text	; Must be clear of cartridge mapping areas
-;
-;	uint16_t cart_hash(void)
-;
-_cart_hash:
-	pshs cc
-	orcc #0x10
-	ldx #0xC000
-	ldd #0
-	clr $FFBE	; Map cartridge
-hashl:
-	addd ,x++
-	cmpx #0xC200
-	bne hashl
-	tfr d,x
-	clr $FFBF	; Return to normality
-	puls cc,pc
-
 
 	.area .common
 ;

@@ -1,13 +1,15 @@
 #include <kernel.h>
 #include <input.h>
 #include <devinput.h>
+#include <ps2kbd.h>
 #include <ps2mouse.h>
 #include <printf.h>
 
-extern uint8_t ps2busy;
+/* Some platforms polling the mouse is expensive so let them query */
+uint_fast8_t ps2m_open;
 
-static uint8_t open;
-static uint8_t fivebutton;
+static uint_fast8_t open;
+static uint_fast8_t fivebutton;
 
 /* PS/2 mouse - rather simpler than the keyboardc */
 
@@ -15,16 +17,18 @@ static uint8_t fivebutton;
 #define FAIL 0x200
 #define STOP 0xFFFF
 
-static uint16_t mouse_init[] = {
+static const uint16_t mouse_init[] = {
     SEND|0xFF,
     FAIL|0xFA,
     FAIL|0xAA,
     FAIL|0x00,
     SEND|0xF3,
+    FAIL|0xFA,
     STOP
+    /* May bee followed by an FA or FE */
 };
 
-static uint16_t mouse_scrolltest[] = {
+static const uint16_t mouse_scrolltest[] = {
     SEND|0xF3,			/* Set sample rate */
     FAIL|0xFA,			/* Magic handshake is to 200,100,80 */
     SEND|0xC8,
@@ -43,7 +47,7 @@ static uint16_t mouse_scrolltest[] = {
     STOP
 };
 
-static uint16_t mouse_fivetest[] = {
+static const uint16_t mouse_fivetest[] = {
     SEND|0xF3,			/* Set sample rate */
     FAIL|0xFA,			/* Magic handshake is to 200,200,80 */
     SEND|0xC8,
@@ -62,8 +66,7 @@ static uint16_t mouse_fivetest[] = {
     STOP
 };
 
-static uint16_t mouse_setup[] = {
-    FAIL|0xFA,
+static const uint16_t mouse_setup[] = {
     SEND|0xE6,			/* Scaling 1:1 */
     FAIL|0xFA,
     SEND|0xF3,			/* 10 samples a second */
@@ -73,30 +76,30 @@ static uint16_t mouse_setup[] = {
     STOP
 };
 
-static uint16_t mouse_open[] = {
+static const uint16_t mouse_open[] = {
     SEND|0xF4,
     FAIL|0xFA,
     STOP
 };
 
-static uint16_t mouse_close[] = {
+static const uint16_t mouse_close[] = {
     SEND|0xF5,
     FAIL|0xFA,
     STOP
 };
 
 /* One day we might want to handle FE/FC rules */
-static int mouse_op(uint16_t *op)
+static unsigned mouse_op(const uint16_t *op)
 {
     uint8_t r;
     ps2busy = 1;
     while(*op != STOP) {
-        if (*op & SEND)
+        if (*op & SEND) {
             if (ps2mouse_put(*op)) {
                 ps2busy = 0;
                 return 0;
             }
-        else {
+        } else {
             r = ps2mouse_get();
             if ((*op & FAIL) && r != (*op & 0xFF)) {
                 ps2busy = 0;
@@ -110,8 +113,8 @@ static int mouse_op(uint16_t *op)
 }
 
 static uint8_t packet[4];
-static uint8_t packc;
-static uint8_t packsize = 4;
+static uint_fast8_t packc;
+static uint_fast8_t packsize = 4;
 
 /* We received a 3 or 4 byte packet. Now process it
    Fudge the movement slightly as the PS/2 mouse is 9bit */
@@ -135,20 +138,12 @@ static void ps2mouse_event(void)
     if (fivebutton)
         event[1] |= (packet[3] & 0x18);
     /* The rest is up to the platform */
-    platform_ps2mouse_event(event);
+    plt_ps2mouse_event(event);
 }
 
-void ps2mouse_poll(void)
+void ps2mouse_byte(uint_fast8_t byte)
 {
-    uint16_t r;
-    
-    if (!open || ps2busy)
-        return;
-    
-    r = ps2mouse_get();
-    if (r > 0xFF)
-        return;
-    packet[packc++] = r;
+    packet[packc++] = byte;
     if (packc == packsize) {
         ps2mouse_event();
         packc = 0;
@@ -156,10 +151,11 @@ void ps2mouse_poll(void)
     }
 }
 
-uint8_t ps2mouse_open(void)
+uint_fast8_t ps2mouse_open(void)
 {
     open =  mouse_op(mouse_open);
     packc = 0;
+    ps2m_open++;
     return open;
 }
 
@@ -167,19 +163,21 @@ void ps2mouse_close(void)
 {
     open = 0;
     mouse_op(mouse_close);
+    ps2m_open--;
 }
 
 int ps2mouse_init(void)
 {
-    uint8_t r;
-    uint8_t i;
-    uint8_t buttons = 5;
+    unsigned int r;
+    uint_fast8_t i;
+    uint_fast8_t buttons = 5;
 
     ps2busy = 1;
     /* We may have FF or FF AA or FF AA 00 or other info queued before
        our reset, if so empty it out */
     for (i = 0; i < 4; i++) {
-        ps2mouse_get();
+        if (ps2mouse_get() == PS2_NOCHAR)
+            break;
     }
 
     r = mouse_op(mouse_init);
@@ -198,4 +196,3 @@ int ps2mouse_init(void)
     mouse_op(mouse_setup);
     return 1;
 }
-

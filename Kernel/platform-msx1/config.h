@@ -55,7 +55,7 @@ extern uint16_t swap_dev;
 #define CMDLINE	NULL  /* Location of root dev name */
 #define BOOTDEVICENAMES "hd#,fd"
 
-//#define CONFIG_DYNAMIC_BUFPOOL /* we expand bufpool to overwrite the _DISCARD segment at boot */
+#define CONFIG_DYNAMIC_BUFPOOL /* we expand bufpool to overwrite the _DISCARD segment at boot */
 #define NBUFS    5        /* Number of block buffers, keep in line with space reserved in zeta-v2.s */
 #define NMOUNTS	 2	  /* Number of mounts at a time */
 
@@ -71,4 +71,6 @@ extern uint16_t swap_dev;
 
 #define TTYDEV   BOOT_TTY /* Device used by kernel for messages, panics */
 
-#define platform_copyright()
+#define plt_copyright()
+
+extern uint8_t direct_io_range(uint16_t dev);

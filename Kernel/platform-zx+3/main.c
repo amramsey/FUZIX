@@ -1,6 +1,7 @@
 #include <kernel.h>
 #include <timer.h>
 #include <kdata.h>
+#include <kmod.h>
 #include <printf.h>
 #include <devtty.h>
 #include <devinput.h>
@@ -10,7 +11,7 @@ uint16_t swap_dev = 0xFFFF;
 
 /* On idle we spin checking for the terminals. Gives us more responsiveness
    for the polled ports */
-void platform_idle(void)
+void plt_idle(void)
 {
   /* We don't want an idle poll and IRQ driven tty poll at the same moment */
   __asm
@@ -20,7 +21,7 @@ void platform_idle(void)
 
 uint8_t timer_wait;
 
-void platform_interrupt(void)
+void plt_interrupt(void)
 {
  tty_pollirq();
  timer_interrupt();
@@ -35,9 +36,9 @@ void platform_interrupt(void)
  *	the runtime
  */
 
-int strlen(const char *p)
+size_t strlen(const char *p)
 {
-  int len = 0;
+  size_t len = 0;
   while(*p++)
     len++;
   return len;
@@ -55,10 +56,12 @@ struct blkbuf *bufpool_end = bufpool + NBUFS;
  *
  *	We don't touch discard. Discard is just turned into user space.
  */
-void platform_discard(void)
+void plt_discard(void)
 {
 	uint16_t discard_size = ((uint16_t)&udata) - (uint16_t)bufpool_end;
 	bufptr bp = bufpool_end;
+
+	kmod_init(bufpool_end, &udata);
 
 	discard_size /= sizeof(struct blkbuf);
 
@@ -72,6 +75,19 @@ void platform_discard(void)
 		bp->bf_dev = NO_DEVICE;
 		bp->bf_busy = BF_FREE;
 	}
+}
+
+unsigned plt_kmod_set(uint8_t *top)
+{
+	/* Make sure all disk buffers are on disk */
+	sync();
+	/* Wind back until bufpool end is below the modules */
+	while(bufpool_end > (void *)top)
+		bufpool_end--;
+	/* Any buffers lost we already wrote to disk, any new lookups will
+	   not find them, and we know there are no other outstanding references
+	   - sometimes having a dumb I/O layer is a win */
+	return 0;
 }
 
 #ifndef SWAPDEV

@@ -12,7 +12,7 @@
 #define		STICK_DIGITAL_D 0x40
 #define		STICK_DIGITAL_L	0x20
 #define		STICK_DIGITAL_R	0x10
-#define STICK_ANALOG	0x30		/* 16bit signed X / Y, sign */
+#define STICK_ANALOG	0x30		/* 16bit signed X / Y, buttons */
 
 /* No device number - but 3 bits reserved if needed */
 #define KEYPRESS_CODE	0x40		/* Followed by keycode byte. Number
@@ -52,9 +52,9 @@ extern uint_fast8_t input_match_meta(uint_fast8_t);
 /*
  *	Platform methods for input device if present
  */
-extern int platform_input_read(uint8_t *);
-extern void platform_input_wait(void);
-extern int platform_input_write(uint_fast8_t);
-extern uint_fast8_t platform_input_init(void);
+extern int plt_input_read(uint8_t *);
+extern void plt_input_wait(void);
+extern int plt_input_write(uint_fast8_t);
+extern uint_fast8_t plt_input_init(void);
 
 #endif

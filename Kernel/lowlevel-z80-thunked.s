@@ -31,11 +31,10 @@
         .globl map_save_low
         .globl map_restore_low
 	.globl outchar
-	.globl _inint
-	.globl _platform_interrupt
+	.globl _plt_interrupt
 	.globl _need_resched
-	.globl _platform_switchout
-	.globl _platform_doexec
+	.globl _plt_switchout
+	.globl _plt_doexec
 
         ; exported symbols
 	.globl unix_syscall_entry
@@ -57,7 +56,7 @@
         ; imported symbols
 	.globl _chksigs
 	.globl _int_disabled
-        .globl _platform_monitor
+        .globl _plt_monitor
         .globl _unix_syscall
         .globl outstring
         .globl kstack_top
@@ -91,7 +90,7 @@ _doexec:
 	ld d,h
 	ld e,#0
 	ld a,(_udata + U_DATA__U_PAGE+HIGHPAGE) ; pass high page to trampoline
-	jp _platform_doexec	; jump into the low memory stub
+	jp _plt_doexec	; jump into the low memory stub
 
 ;
 ;	This is the entry point from the platform wrapper. When we hit this
@@ -160,7 +159,7 @@ syscall_return:
 	pop de
 	pop bc
 	exx
-	; Return page for caller (may not be the page we can in on if we
+	; Return page for caller (may not be the page we came in on if we
 	; swapped
 	ld a,(_udata + U_DATA__U_PAGE+HIGHPAGE)
 	ret
@@ -196,7 +195,7 @@ nmi_handler:
         ld hl, #nmimsg
 traphl:
         call outstring
-        call _platform_monitor
+        call _plt_monitor
 
 	HIGH
 ;
@@ -207,12 +206,9 @@ traphl:
 interrupt_handler:
 	call map_save_low	; save old and map kernel
 	ld a,#1
-	ld (_inint),a
 	ld (_udata + U_DATA__U_ININTERRUPT),a
 	ld (_int_disabled),a
-	call _platform_interrupt
-	xor a
-	ld (_inint),a
+	call _plt_interrupt
 	ld a,(_need_resched)
 	or a
 	jr nz, preemption
@@ -281,7 +277,7 @@ interrupt_sig:
 ;	a vital stubs return address top of our current stack
 ;
 ;	We move the return address onto the kstack, switch to the kstack
-;	and then park ourselves in platform_switchout. On our return the
+;	and then park ourselves in plt_switchout. On our return the
 ;	istack has been lost but our kstack (private to us) still has the
 ;	needed return address to the stubs and we can unwind everything
 ;	via that stack.
@@ -319,7 +315,7 @@ not_running:
 	; FIXME: can we get here on timers when only one thing is running
 	; and we don't need to pre-empt ????? Is this more generally busted
 	; ? It is .... review timer interrupt logic... FIXME
-	call _platform_switchout
+	call _plt_switchout
 	; Undo the fakery
 	xor a
 	ld (_udata + U_DATA__U_ININTERRUPT),a

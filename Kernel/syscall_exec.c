@@ -10,11 +10,7 @@
 
 /* This is hardcoded as we use disk buffers as scratch for the arguments
    on most platforms */
-#define ARGBUF_SIZE	512
-
-/* SN    TODO      max (1024) 512 bytes for argv
-               and max  512 bytes for environ
-*/
+#define ARGBUF_SIZE	BLKSIZE
 
 bool rargs(uint8_t **userspace_argv, struct s_argblk * argbuf)
 {
@@ -40,7 +36,7 @@ bool rargs(uint8_t **userspace_argv, struct s_argblk * argbuf)
 		while (c);
 	}
 	argbuf->a_arglen = bufp - (uint8_t *)argbuf->a_buf;	/* Store total string size. */
-	argbuf->a_arglen = ALIGNUP(argbuf->a_arglen);
+	argbuf->a_arglen = (size_t)ALIGNUP(argbuf->a_arglen);
 	return false;		// success
 }
 
@@ -86,7 +82,8 @@ uint8_t **wargs(uint8_t *ptr, struct s_argblk *argbuf, int *cnt)	// ptr is in us
 #ifdef CONFIG_LEVEL_2
 
 /*
- *	Core dump
+ *	Core dump: FIXME write a proper core header and usable image. Right now this
+ *	is basically a dummy
  */
 
 static struct coredump corehdr = {
@@ -116,7 +113,7 @@ void coredump_memory(inoptr ino, uaddr_t base, usize_t len, uint16_t flags)
 
 uint8_t write_core_image(void)
 {
-	inoptr parent = NULLINODE;
+	inoptr parent;
 	inoptr ino;
 
 	udata.u_error = 0;
@@ -138,7 +135,7 @@ uint8_t write_core_image(void)
 			wr_inode(ino);
 			f_trunc(ino);
 			/* Write the header */
-			corehdr.ch_base = (uptr_t)pagemap_base;
+			corehdr.ch_base = (uptr_t)udata.u_codebase;
 			corehdr.ch_break = udata.u_break;
 			corehdr.ch_sp = udata.u_syscall_sp;
 #ifdef PROGTOP
@@ -154,7 +151,7 @@ uint8_t write_core_image(void)
 			/* Ask the architecture to dump the user registers */
 //TODO			coredump_user_registers(ino);
 			/* Ask the memory manager to dump the memory map */
-			coredump_memory_image(ino);
+			coredump_image(ino);
 			i_unlock_deref(ino);
 			i_unlock_deref(parent);
 			return W_COREDUMP;

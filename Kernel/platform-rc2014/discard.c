@@ -3,17 +3,19 @@
 #include <printf.h>
 #include <devtty.h>
 #include <ds1302.h>
+#include <ds12885.h>
 #include <devide.h>
 #include <devsd.h>
 #include <blkdev.h>
 #include <ppide.h>
-#include <rc2014.h>
+#include <rcbus.h>
 #include <vt.h>
 #include <netdev.h>
 #include <zxkey.h>
 #include <ps2kbd.h>
 #include <ps2mouse.h>
 #include <graphics.h>
+#include <devlpr.h>
 #include "z180_uart.h"
 
 /* Everything in here is discarded after init starts */
@@ -283,13 +285,21 @@ static void sc26c92_timer(void)
 
 void init_hardware_c(void)
 {
-	extern struct termios ttydflt;
-
 	ramsize = 512;
 	procmem = 512 - 80;
 
+	ef9345_present = ef9345_probe();
+	if (ef9345_present) {
+		shadowcon = 1;
+		ef9345_init();
+		vt_twidth = 80;
+		vt_tright = 79;
+		vtinit();
+		/* TODO: ef9345 as vblank ?? */
+	}
+
 	/* The TMS9918A and KIO clash */
-	if (!kio_present) {
+	if (!kio_present && !shadowcon) {
 		tms9918a_present = probe_tms9918a();
 		if (tms9918a_present) {
 			shadowcon = 1;
@@ -307,6 +317,14 @@ void init_hardware_c(void)
 		rtc_port = 0x0C;
 		rtc_shadow = 0x0C;
 		timer_source = TIMER_Z180;
+	}
+	if (systype == 9) {	/* Easy Z80 is different */
+		register_uart(0x80, &easy_uart);
+		register_uart(0x82, &easy_uartb);
+	}
+	if (eipc_present) {
+		register_uart(0x18, &eipc_uart);
+		register_uart(0x1A, &eipc_uart);
 	}
 	if (kio_present) {
 		register_uart(0x88, &kio_uart);
@@ -376,8 +394,37 @@ static uint8_t probe_copro(void)
 	return 1;
 }
 
+void vdu_setup(void)
+{
+	if (shadowcon) {
+		/* Add the consoles */
+		uint8_t n = 0;
+		shadowcon = 0;
+		do {
+			if (ef9345_present)
+				insert_uart(0x44, &ef_uart);
+			else
+				insert_uart(0x98, &tms_uart);
+			n++;
+		} while(n < 4 && nuart <= NUM_DEV_TTY);
+	}
+}
+
 __sfr __at 0xED z512_ctrl;
 
+static char *sysname(void)
+{
+	if (systype == 7)
+		return "n RC2014";
+	if (systype == 8)
+		return "n RCBUS Z180";
+	if (systype == 9) {
+		if (eipc_present)
+			return " TinyZ80";
+		return "n EasyZ80";
+	}
+	return "n unknown device";
+}
 /*
  *	Do the main memory bank and device set up
  */
@@ -398,12 +445,18 @@ void pagemap_init(void)
 	/* finally add the common area */
 	pagemap_add(32 + 3);
 
+	kprintf("RomWBW %d.%d on a%s@%dMHz.\n",
+		romver >> 4, romver & 0x0F,
+		sysname(), syscpu & 0xFF);
+#ifdef CONFIG_RTC_DS1302	
 	/* Could be at 0xC0 or 0x0C */
 	ds1302_init();
+	inittod();
 	if (!ds1302_present) {
 		rtc_port = 0x0C;
 		ds1302_init();
 	}
+#endif
 
 	quart_present = probe_quart();
 	/* Further ports we register at this point */
@@ -423,20 +476,44 @@ void pagemap_init(void)
 		register_uart(0x86, &sio_uartb);
 	}
 
+	/* TODO : we assume normal RC2014 speeds, or 16MHz for the EIPC
+	   based machine. Possibly we should ask ROMWBW and pick from
+	   a table for other speeds */
 	if (ctc_port) {
-		if (timer_source == TIMER_NONE)
+		if (timer_source == TIMER_NONE) {
 			timer_source = TIMER_CTC;
-		else {
-			/* Turn off our CTC interrupts */
-			out(ctc_port + 2, 0x43);
-			out(ctc_port + 3, 0x43);
+			if (eipc_present) {
+				ticksperclk = 25;
+				out(ctc_port + 2, 0xB5);
+				out(ctc_port + 2, 250);
+			} else {
+				ticksperclk = 20;
+				out(ctc_port + 2, 0xB5);
+				out(ctc_port + 2, 144);
+			}
 		}
 		kprintf("Z80 CTC detected at 0x%2x.\n", ctc_port);
 	}
-
-	if (tms9918a_present) {
-		kprintf("%s detected at 0x98.\n", vdpname);
+	/* Prefer CTC to DS12885 timer */
+#ifdef CONFIG_RTC_DS12885
+	ds12885_init();
+	inittod();
+	if (ds12885_present) {
+		kprintf("DS12885 detected at 0x%2x.\n", rtc_port);
+		if (timer_source == TIMER_NONE) {
+			ds12885_set_interval();
+			timer_source = TIMER_DS12885;
+			kputs("DS12885 timer enabled\n");
+		} else {
+			ds12885_disable_interval();
+		}
 	}
+#endif
+
+	if (tms9918a_present)
+		kprintf("%s detected at 0x98.\n", vdpname);
+	if (ef9345_present)
+		kputs("EF9345 detected at 0x44.\n");
 
 	if (!acia_present)
 		sc26c92_present = probe_sc26c92();
@@ -460,47 +537,55 @@ void pagemap_init(void)
 	if (timer_source == TIMER_NONE)
 		kputs("Warning: no timer available.\n");
 	else
-		platform_tick_present = 1;
+		plt_tick_present = 1;
 
 	dma_present = !probe_z80dma();
 	if (dma_present)
 		kputs("Z80DMA detected at 0x04.\n");
 
+#ifdef CONFIG_RTC_DS1302
 	if (ds1302_present)
 		kprintf("DS1302 detected at 0x%2x.\n", rtc_port);
+#endif
 
 	/* Boot the coprocessor if present (just one for now) */
 	copro_present = probe_copro();
 	if (copro_present)
 		kputs("Z80 Co-processor at 0xBC\n");
 
+	if (ps2port_init())
+		ps2_type = PS2_DIRECT;
+	else
+		ps2_type = PS2_BITBANG;	/* Try bitbanger */
+
 	ps2kbd_present = ps2kbd_init();
 	if (ps2kbd_present) {
-		kputs("PS/2 Keyboard at 0xBB\n");
-		if (!zxkey_present && tms9918a_present) {
+		kprintf("PS/2 Keyboard at 0x%2x\n", ps2_type == PS2_DIRECT ? 0x60 : 0xBB);
+		if (!zxkey_present && shadowcon) {	/* TOOD: || ef9345 - test shadowcon ? */
 			/* Add the consoles */
-			uint8_t n = 0;
-			shadowcon = 0;
 			kputs("Switching to video output.\n");
-			do {
-				insert_uart(0x98, &tms_uart);
-				n++;
-			} while(n < 4 && nuart <= NUM_DEV_TTY);
+			vdu_setup();
 		}
 	}
 	ps2mouse_present = ps2mouse_init();
 	if (ps2mouse_present) {
-		kputs("PS/2 Mouse at 0xBB\n");
+		kprintf("PS/2 Mouse at 0x%2x\n", ps2_type == PS2_DIRECT ? 0x60 : 0xBB);
 		/* TODO: wire to input layer and interrupt */
 	}
-
 	if (fpu_detect())
 		kputs("AMD9511 FPU at 0x42\n");
 	/* Devices in the C0-FF range cannot be used with Z180 */
 	if (!z180_present) {
 		i = 0xC0;
 		while(i) {
-			if (!ds1302_present || rtc_port != i) {
+			if (
+#ifdef CONFIG_RTC_DS1302
+				!ds1302_present ||
+#endif
+#ifdef CONFIG_RTC_DS12885
+				!ds12885_present ||
+#endif
+				rtc_port != i) {
 				if (m = probe_16x50(i)) {
 					register_uart(i, &ns16x50_uart);
 					/* Can't be a Z80-512K if there is a
@@ -528,22 +613,14 @@ void map_init(void)
 {
 }
 
-uint8_t platform_param(unsigned char *p)
+uint8_t plt_param(unsigned char *p)
 {
-	/* If we have a keyboard then the TMS9918A becomes a real tty
+	/* If we have a keyboard then the TMS9918A or EF9345 becomes a real tty
 	   and we make it the primary console */
 	if (strcmp(p, "zxkey") == 0 && !zxkey_present && !ps2kbd_present) {
 		zxkey_present = 1;
 		zxkey_init();
-		if (tms9918a_present) {
-			/* Add the consoles */
-			uint8_t n = 0;
-			shadowcon = 0;
-			do {
-				insert_uart(0x98, &tms_uart);
-				n++;
-			} while(n < 4 && nuart <= NUM_DEV_TTY);
-		}
+		vdu_setup();
 		return 1;
 	}
 	return 0;
@@ -552,6 +629,8 @@ uint8_t platform_param(unsigned char *p)
 
 void device_init(void)
 {
+	if (eipc_present)
+		ide_port = 0x0090;
 #ifdef CONFIG_IDE
 	devide_init();
 #ifdef CONFIG_PPIDE
@@ -562,7 +641,14 @@ void device_init(void)
 	pio_setup();
 	devsd_init();
 #endif
+	lpr_init();
 #ifdef CONFIG_NET
 	sock_init();
 #endif
 }
+
+/* Until we tidy the conditional build of floppy up provide a dummy symbol: FIXME */
+
+#ifndef CONFIG_FLOPPY
+uint8_t devfd_dtbl;
+#endif

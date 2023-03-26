@@ -28,11 +28,10 @@
 	.import map_save_kernel
 	.import map_process_always
 	.import map_kernel
-	.import _platform_interrupt_i
-	.import platform_doexec
-	.import _inint
+	.import _plt_interrupt_i
+	.import plt_doexec
 	.import CTemp
-	.import _platform_monitor
+	.import _plt_monitor
 
 	.include "platform/zeropage.inc"
 	.include "platform/kernel.def"
@@ -80,7 +79,7 @@ _doexec:
 	sty _kernel_flag
 	jsr map_process_always
 	sei
-	jmp platform_doexec
+	jmp plt_doexec
 
 ;
 ;	Platform code has saved the registers and ensured we are in the
@@ -101,11 +100,7 @@ _doexec:
 interrupt_handler:
 ; Our caller will deal with ZP via stash_sp and any platform magic
 	jsr map_save_kernel
-	lda #1
-	sta _inint
-	jsr _platform_interrupt_i	; call via C int wrapper
-	lda #0
-	sta _inint
+	jsr _plt_interrupt_i	; call via C int wrapper
 	lda _kernel_flag
 	bne interrupt_k
 	jmp map_process_always		; may have switched task
@@ -136,7 +131,7 @@ nmi_handler:
 	lda #<nmi_trap
 	jsr outstring
 nmi_stop:
-	jmp _platform_monitor
+	jmp _plt_monitor
 nmi_trap:
 	.byte "NMI!", 0
 

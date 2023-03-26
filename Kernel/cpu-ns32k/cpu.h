@@ -1,7 +1,9 @@
+#define CPU_MID	MID_FUZIXNS32
+
 #define uputp  uputl			/* Copy user pointer type */
-#define ugetp  ugetl			/* between user and kernel */
+#define ugetp(x)  ugetl(x)		/* between user and kernel */
 #define uputi  uputl			/* Copy user int type */
-#define ugeti(x)  ugetl(x,NULL)		/* between user and kernel */
+#define ugeti(x)  ugetl(x)		/* between user and kernel */
 
 extern void *memcpy(void *, const void  *, size_t);
 extern void *memset(void *, int, size_t);
@@ -36,6 +38,7 @@ extern uint16_t swab(uint16_t);
 
 /* Pointers are 32bit */
 #define POINTER32
+typedef uint32_t paddr_t;
 
 /* Sane behaviour for unused parameters */
 #define used(x)
@@ -50,6 +53,7 @@ register struct u_data *udata_ptr asm ("r6");
 
 #define __packed		__attribute__((packed))
 #define barrier()		asm volatile("":::"memory")
+#define NORETURN		__attribute__((__noreturn__))
 
 /* Memory helpers: Max of 32767 blocks (16MB) as written */
 extern void copy_blocks(void *, void *, unsigned int);

@@ -1,7 +1,9 @@
+#define CPU_MID MID_FUZIX68000
+
 #define uputp  uputl			/* Copy user pointer type */
-#define ugetp(x)  ugetl(x,NULL)		/* between user and kernel */
+#define ugetp(x)  ugetl(x)		/* between user and kernel */
 #define uputi  uputl			/* Copy user int type */
-#define ugeti(x)  ugetl(x,NULL)		/* between user and kernel */
+#define ugeti(x)  ugetl(x)		/* between user and kernel */
 
 extern void *memcpy(void *, const void  *, size_t);
 extern void *memset(void *, int, size_t);
@@ -37,6 +39,9 @@ extern uint16_t swab(uint16_t);
 /* Pointers are 32bit */
 #define POINTER32
 
+typedef	uint32_t	paddr_t;	/* 32bit physical addresses */
+typedef uint16_t	page_t;		/* Page frame numbering */
+
 /* Sane behaviour for unused parameters */
 #define used(x)
 
@@ -62,6 +67,8 @@ extern void *memcpy32(void *to, const void *from, size_t bytes);
 extern int probe_memory(void *p);
 extern int cpu_type(void);
 
+extern void enable_icache(void);
+
 /* Optional mapping helpers for I/O memory windows when we have portable
    driver code. The platform defines IOMAP(x) to return the value of the
    memory location for that I/O port */
@@ -84,3 +91,4 @@ extern int cpu_type(void);
 #define PROGBASE		(udata.u_codebase)
 
 #define __fastcall
+#define NORETURN __attribute__((__noreturn__))

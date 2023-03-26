@@ -217,9 +217,12 @@ long dufork(char *ep)
 {
 	int i;
 	int pid;
-	int pfd[2] = {0, 0};
+	int pfd[2];
 	int status;
 	long sz = 0;
+
+	pfd[0] = 0;
+	pfd[1] = 0;
 
 	fflush(stdout);
 	if (pipe(pfd)<0 || (pid = fork())<0) {
@@ -276,14 +279,12 @@ static int du(char *name)
 	return (0);
 }
 	
-void main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
 	int i;
 	char *ap;
 	int estat;
 	
-	int nfile = sysconf(_SC_OPEN_MAX);
-
 	while (argc>1 && *argv[1]=='-') {
 		for (ap = &argv[1][1]; *ap != '\0'; ap++)
 			switch (*ap) {

@@ -5,8 +5,10 @@
 #include <tty.h>
 #include <graphics.h>
 #include <devtty.h>
-#include <rc2014.h>
+#include <rcbus.h>
 #include <vt.h>
+#include <cpu_ioctl.h>
+#include <softzx81.h>
 #include "z180_uart.h"
 
 struct uart *uart[NUM_DEV_TTY + 1];
@@ -31,7 +33,10 @@ tcflag_t termios_mask[NUM_DEV_TTY + 1] = {
 };
 
 uint8_t vidmode;	/* For live screen */
-static uint8_t mode[4];	/* Per console */
+static uint8_t mode[5];	/* Per console 1-4 */
+static uint8_t tmsinkpaper[5] = {0, 0xF4, 0xF4, 0xF4, 0xF4 };
+static uint8_t tmsborder[5] = { 0, 0x04, 0x04, 0x04, 0x04 };
+static uint8_t efinkpaper[5] = { 0, 0x8F, 0x8F, 0x8F, 0x8F };
 static uint8_t vswitch;	/* Track vt switch locking due top graphics maps */
 uint8_t vt_twidth;
 uint8_t vt_tright;
@@ -100,7 +105,7 @@ void kputchar(char c)
 
 int rctty_open(uint_fast8_t minor, uint16_t flag)
 {
-	if (ttyport[minor])
+	if (minor <= NUM_DEV_TTY && ttyport[minor])
 		return tty_open(minor, flag);
 	udata.u_error = ENXIO;
 	return -1;
@@ -271,16 +276,18 @@ static uint8_t siobaud[] = {
 	0,	/* 110 */
 	0,	/* 134 */
 	0,	/* 150 */
+	/* x 64 clock */
 	0xC0,	/* 300 */
 	0x60,	/* 600 */
-	0xC0,	/* 1200 */
-	0x60,	/* 2400 */
-	0x30,	/* 4800 */
-	0x18,	/* 9600 */
-	0x0C,	/* 19200 */
-	0x06,	/* 38400 */
-	0x04,	/* 57600 */
-	0x02	/* 115200 */
+	0x30,	/* 1200 */
+	0x18,	/* 2400 */
+	0x0C,	/* 4800 */
+	0x06,	/* 9600 */
+	0x03,	/* 19200 */
+	/* x 32 clock */
+	0x03,	/* 38400 */
+	0x02,	/* 57600 */
+	0x01	/* 115200 */
 };
 
 /* Note: in theory we can support below 300 baud in some cases but it's
@@ -325,8 +332,8 @@ static void sio_do_setup(uint_fast8_t minor)
 	if (ctc_port && p == SIOB_C) {
 		out(ctc_port + 1, 0x55);
 		out(ctc_port + 1, siobaud[baud]);
-		if (baud > B600)	/* Use x16 clock and CTC divider */
-			r = 0x44;
+		if (baud > B19200)	/* Use x32 clock and CTC divider */
+			r = 0x84;
 	} else if (z512_present && p == SIOB_C)
 		z512_ctl = siobaud2[baud];
 	else
@@ -487,6 +494,103 @@ struct uart kio_uartb = {
 	kio_carrier,
 	CSIZE|CBAUD|CSTOPB|PARENB|PARODD|_CSYS,
 	"Z80 KIO"
+};
+
+/* We are clocking at 1.8432MHz and x16 or x64 for the low speeds */
+static uint16_t eipc_siobaud[] = {
+	0xC0,	/* 0 */
+	0,	/* 50 */
+	0,	/* 75 */
+	0,	/* 110 */
+	0xD6,	/* 134 */
+	0xC0,	/* 150 */
+	0x60,	/* 300 */
+	0xC0,	/* 600 */
+	0x60,	/* 1200 */
+	0x30,	/* 2400 */
+	0x18,	/* 4800 */
+	0x0C,	/* 9600 */
+	0x06,	/* 19200 */
+	0x03,	/* 38400 */
+	0x02,	/* 57600 */
+	0x01	/* 115200 */
+};
+
+static void eipc_setup(uint8_t minor)
+{
+	struct termios *t = &ttydata[minor].termios;
+	uint8_t r;
+	uint8_t baud;
+
+	baud = t->c_cflag & CBAUD;
+	if (baud < B134)
+		baud = B134;
+
+	/* Set bits per character */
+	sio_r[1] = 0x01 | ((t->c_cflag & CSIZE) << 2);
+
+	r = 0xC4;
+
+	out(ctc_port + minor, 0x55);
+	out(ctc_port + minor,  siobaud[baud]);
+
+	if (baud >= B600)	/* Use x16 clock and CTC divider */
+		r = 0x44;
+
+	t->c_cflag &= ~CBAUD;
+	t->c_cflag |= baud;
+
+	if (t->c_cflag & CSTOPB)
+		r |= 0x08;
+	if (t->c_cflag & PARENB)
+		r |= 0x01;
+	if (t->c_cflag & PARODD)
+		r |= 0x02;
+	sio_r[3] = r;
+	sio_r[5] = 0x8A | ((t->c_cflag & CSIZE) << 1);
+	sio2_otir(ttyport[minor]);
+}
+
+struct uart eipc_uart = {
+	kio_intr,
+	kio_writeready,
+	kio_putc,
+	kio_setup,
+	kio_carrier,
+	CSIZE|CBAUD|CSTOPB|PARENB|PARODD|_CSYS,
+	"Z80 EIPC"
+};
+
+struct uart eipc_uartb = {
+	kio_intrb,
+	kio_writeready,
+	kio_putc,
+	eipc_setup,
+	kio_carrier,
+	CSIZE|CBAUD|CSTOPB|PARENB|PARODD|_CSYS,
+	"Z80 EIPC"
+};
+
+/* Discrete SIO mapped and clocked the same way
+   as on the EIPC */
+struct uart easy_uart = {
+	kio_intr,
+	kio_writeready,
+	kio_putc,
+	kio_setup,
+	kio_carrier,
+	CSIZE|CBAUD|CSTOPB|PARENB|PARODD|_CSYS,
+	"SIO"
+};
+
+struct uart easy_uartb = {
+	kio_intrb,
+	kio_writeready,
+	kio_putc,
+	eipc_setup,
+	kio_carrier,
+	CSIZE|CBAUD|CSTOPB|PARENB|PARODD|_CSYS,
+	"SIO"
 };
 
 
@@ -675,7 +779,7 @@ static void asci_setup(uint_fast8_t minor)
     if (cflag & PARENB) {
         cntla |= 2;
         if (cflag & PARODD)
-            cntlb |= 4;
+            cntlb |= 0x10;
     }
     if ((cflag & CSIZE) == CS8)
         cntla |= 4;
@@ -1146,6 +1250,8 @@ struct uart xr88c681_uart = {
 
 /*
  *	Console driver for the TMS9918A
+ *	EF9345 is hooked into the TMS driver so this really
+ *	needs renamign as vt driver..
  */
 
 static uint8_t tms_intr(uint8_t minor)
@@ -1173,6 +1279,9 @@ static void tms_setoutput(uint_fast8_t minor)
 {
 	vt_save(&ttysave[outputtty - 1]);
 	outputtty = minor;
+	/* The 9345 needs to cache the output bank */
+	if (ef9345_present)
+		ef9345_set_output();
 	vt_load(&ttysave[outputtty - 1]);
 }
 
@@ -1194,11 +1303,28 @@ void do_conswitch(uint8_t c)
 	if (vswitch)
 		return;
 
+	/* 80 column card */
+	if (ef9345_present) {
+		/* Calls into the EF9345 code. FIXME clean path */
+		tms_setoutput(inputtty);
+		vt_cursor_off();
+		inputtty = c;
+		set_console();
+		vt_cursor_on();
+		vt_twidth = 80;
+		vt_tright = 79;
+		return;
+	}
+	/* TMS9918A */
 	tms_setoutput(inputtty);
 	vt_cursor_off();
 	inputtty = c;
 	if (vidmode != mode[c])
 		tms9918a_reload();
+	else {
+		tms9918a_udgload();
+		tms9918a_attributes();
+	}
 	set_console();
 	tms_setoutput(c);
 	vt_cursor_on();
@@ -1220,6 +1346,25 @@ struct uart tms_uart = {
 	carrier_unwired,
 	_CSYS,
 	"TMS9918A"
+};
+
+/* The EF9345 is run via the same vt layer */
+
+static void ef_setup(uint8_t minor)
+{
+	used(minor);
+	vt_twidth = 80;
+	vt_tright = 79;
+}
+
+struct uart ef_uart = {
+	tms_intr,			/* TODO */
+	tms_writeready,
+	tms_putc,
+	ef_setup,
+	carrier_unwired,
+	_CSYS,
+	"EF9345"
 };
 
 /* FIXME: could move this routine into discard */
@@ -1301,6 +1446,30 @@ static struct videomap tms_map = {
 	MAP_PIO
 };
 
+static struct videomap ef_map = {
+	0,
+	0x42,
+	0, 0,
+	0, 0,
+	2,
+	MAP_PIO
+};
+
+static struct display ef_mode[1] = {
+	{
+		0,
+		80, 24,
+		80, 24,
+		255, 255,
+		FMT_TEXT,
+		HW_EF9345,
+		GFX_MULTIMODE|GFX_MAPPABLE|GFX_TEXT,	/* TODO: vblank */
+		16,
+		0,
+		80, 24
+	}
+};
+
 /* FIXME: we need a way of reporting CPU speed/TMS delay info as unlike the
    ports so far we need delays on the RC2014 */
 
@@ -1344,6 +1513,7 @@ static struct display tms_mode[2] = {
  *
  *	The text mode configuration we use is
  *	Secret font store at 3C00-3FFF (128 base symbols copy)
+ *	Secret UDG stash at 3800-3BFF in future maybe (32 chars x 4 so 1K)
  *	4 screens base 0x0000 + 0x400 per screen
  *	Patterns base 0x1000
  *
@@ -1404,6 +1574,66 @@ void tms9918a_reset(void)
 	tms9918a_config(tmsreset);
 }
 
+void tms9918a_set_char(uint_fast8_t c, uint8_t *d)
+{
+	irqflags_t irq = di();
+	unsigned addr = 0x1000 + 8 * c;
+	uint_fast8_t i;
+	for (i = 0; i < 8; i++)
+		tms_writeb(addr++, *d++);
+	irqrestore(irq);
+}
+
+void tms9918a_udgsave(void)
+{
+	irqflags_t irq = di();
+	unsigned i;
+	unsigned uaddr = 0x1400;	/* Char 128-159 */
+	unsigned addr = 0x3800 + 256 * (inputtty - 1);
+	for (i = 0; i < 256; i++)
+		tms_writeb(addr, tms_readb(uaddr++));
+	irqrestore(irq);
+}
+
+void tms9918a_udgload(void)
+{
+	irqflags_t irq = di();
+	unsigned i;
+	unsigned addr = 0x3800 + 256 * (inputtty - 1);
+	unsigned uaddr = 0x1000;		/* Char 128-159, inverses at 0-31 for cursor */
+	for (i = 0; i < 256; i++) {
+		uint8_t c = tms_readb(uaddr++);
+		tms_writeb(addr, ~c);
+		tms_writeb(addr + 0x400, c);
+	}
+	irqrestore(irq);
+}
+
+/* Restore colour attributes */
+void tms9918a_attributes(void)
+{
+	irqflags_t irq = di();
+	if (mode[inputtty]) {
+		unsigned addr;
+		uint8_t c = tmsinkpaper[inputtty];
+		addr = 0x2000;
+		while(addr != 0x2020)
+			tms_writeb(addr++, c);
+		tms9918a_ctrl = tmsborder[inputtty];
+		tms9918a_ctrl = 0x87;
+	} else {
+		tms9918a_ctrl = tmsinkpaper[inputtty];
+		tms9918a_ctrl = 0x87;
+	}
+	irqrestore(irq);
+}
+
+
+void tms9918a_attributes_m(uint8_t minor)
+{
+	if (inputtty == minor)
+		tms9918a_attributes();
+}
 
 struct tmsinfo {
 	uint16_t lastline;
@@ -1450,8 +1680,6 @@ void tms9918a_reload(void)
 		tms_writeb(0x1000 + r, b);
 		tms_writeb(0x1400 + r , ~b);
 	}
-	for (r = 0x2000; r < 0x201F; r++)
-		tms_writeb(r, 0xF4);
 	tms_writeb(0x3B00, 0xD0);
 	tms9918a_config(t->conf);
 	vt_twidth = t->w;
@@ -1469,6 +1697,8 @@ void tms9918a_reload(void)
 		tms9918a_ctrl = t->inton;
 		tms9918a_ctrl = 0x81;
 	}
+	tms9918a_udgload();
+	tms9918a_attributes();
 	vt_cursor_off();
 	tms_setoutput(inputtty);
 	vt_cursor_on();
@@ -1476,12 +1706,49 @@ void tms9918a_reload(void)
 	tms_mode[1].hardware = tms9918a_present;
 }
 
+static struct fontinfo fonti[] = {
+	{ 0, 255, 128, 159, FONT_INFO_6X8 },
+	{ 0, 255, 128, 159, FONT_INFO_8X8 },
+};
+
+static uint8_t igrbmsx[16] = {
+	1,	/* 0000 to Black */
+	4,	/* 000B to 4 dark blue */
+	6,	/* 00R0 to 6 dark red */
+	13,	/* 00RB to magneta */
+	12,	/* 0G00 to dark green */
+	7,	/* 0G0B to cyan */
+	10,	/* 0GR0 to dark yellow */
+	14,	/* 0GRB to grey */
+	14,	/* I000 to grey */
+	5,	/* I00B to light blue */
+	9,	/* 10R0 to light red */
+	8,	/* 10RB to magenta or medium red ? - use mr for now */
+	3,	/* 1G00 to light green */
+	7,	/* 1G0B to cyan - no light cyan */
+	11,	/* 1GR0 to light yellow */
+	15	/* 1GRB to white */
+};
+
+static uint8_t igrb_to_msx(uint8_t c)
+{
+	/* Machine specific colours */
+	if (c & 0x10)
+		return c & 0x0F;
+	/* IGRB colours */
+	return igrbmsx[c & 0x0F];
+}
+
 /* We can have up to 4 vt consoles or it may be shadowing serial input */
 int rctty_ioctl(uint8_t minor, uarg_t arg, char *ptr)
 {
+  uint_fast8_t is_wr = 0;
+  unsigned i = 0;
+  unsigned topchar = 256;
+  uint8_t c;
   uint8_t map[8];
-  if ((minor == 1 && shadowcon) ||
-                 uart[minor] == &tms_uart) {
+
+  if (uart[minor] == &tms_uart) {
   	switch(arg) {
   	case GFXIOC_GETINFO:
                 return uput(&tms_mode[mode[minor]], ptr, sizeof(struct display));
@@ -1489,7 +1756,7 @@ int rctty_ioctl(uint8_t minor, uarg_t arg, char *ptr)
 		if (vswitch)
 			return -EBUSY;
 		vswitch = minor;
-		return uput(&tms_map, ptr, sizeof(struct display));
+		return uput(&tms_map, ptr, sizeof(struct videomap));
 	case GFXIOC_UNMAP:
 		if (vswitch == minor) {
 			tms9918a_reset();
@@ -1528,13 +1795,13 @@ int rctty_ioctl(uint8_t minor, uarg_t arg, char *ptr)
 		tms9918a_config(map);
 		return 0;
 	case VDPIOC_READ:
+		is_wr = 1;
 	case VDPIOC_WRITE:
 	{
 		struct vdp_rw rw;
 		uint16_t size;
 		uint8_t *addr = (uint8_t *)rw.data;
-		
-		if (vswitch != minor) {
+			if (vswitch != minor) {
 			udata.u_error = EINVAL;
 			return -1;
 		}
@@ -1543,7 +1810,7 @@ int rctty_ioctl(uint8_t minor, uarg_t arg, char *ptr)
 			return -1;
 		}
 		size = rw.lines * rw.cols;
-		if (valaddr(addr, size) != size) {
+		if (valaddr(addr, size, is_wr) != size) {
 			udata.u_error = EFAULT;
 			return -1;
 		}
@@ -1555,8 +1822,73 @@ int rctty_ioctl(uint8_t minor, uarg_t arg, char *ptr)
 			return -1;
 		return 0;
 	}
+	case VTFONTINFO:
+		return uput(fonti + mode[minor], ptr, sizeof(struct fontinfo));
+	case VTSETUDG:
+		topchar = 128 + 32;
+		i = 128;
+	case VTSETFONT:
+		while(i < topchar) {
+			if (uget(ptr, map, 8) == -1) {
+				udata.u_error = EFAULT;
+				return -1;
+			}
+			ptr += 8;
+			tms9918a_set_char(i++, map);
+		}
+		tms9918a_udgsave();
+		tms9918a_udgload();
+		return 0;
+	case VTBORDER:
+		c = ugetc(ptr);
+		tmsborder[minor]  = igrb_to_msx(c & 0x1F);
+		tms9918a_attributes_m(minor);
+		return 0;
+	case VTINK:
+		c = ugetc(ptr);
+		tmsinkpaper[minor] &= 0x0F;
+		tmsinkpaper[minor] |= igrb_to_msx(c & 0x1F) << 4;
+		tms9918a_attributes_m(minor);
+		return 0;
+	case VTPAPER:
+		c = ugetc(ptr);
+		tmsinkpaper[minor] &= 0xF0;
+		tmsinkpaper[minor] |= igrb_to_msx(c & 0x1F);
+		tms9918a_attributes_m(minor);
+		return 0;
+	case CPUIOC_Z80SOFT81:
+		if (arg == 0)
+			return softzx81_off(minor);
+		else
+			return softzx81_on(minor);
 	}
-	/* Only the ZX keyboard has support for the bitmapped matrix ops
+  }
+  if (uart[minor] == &ef_uart) {
+	switch(arg) {
+	case GFXIOC_MAP:
+		return uput(&ef_map, ptr, sizeof(struct videomap));
+	case GFXIOC_UNMAP:
+		return 0;
+	case VTINK:
+		c = ugetc(ptr);
+		efinkpaper[minor] &= 0xF8;
+		efinkpaper[minor] |= c & 0x07;
+		if (minor == inputtty) {
+			kprintf("setink %d\n", c);
+			ef9345_colour(efinkpaper[minor]);
+		}
+		return 0;
+	case VTPAPER:
+		c = ugetc(ptr);
+		efinkpaper[minor] &= 0x8F;
+		efinkpaper[minor] |= (c & 0x07) << 4;
+		if (minor == inputtty)
+			ef9345_colour(efinkpaper[minor]);
+		return 0;
+	}
+  }
+  if (uart[minor] == &ef_uart || uart[minor] == &tms_uart) {
+	  /* Only the ZX keyboard has support for the bitmapped matrix ops
 	   and map setting. We need to add different map setting for PS/2
 	   and different auto repeat if we support setting it */
 	if (!zxkey_present &&

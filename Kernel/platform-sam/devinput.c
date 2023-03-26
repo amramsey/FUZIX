@@ -37,7 +37,7 @@ static int8_t clampdec(int16_t *v)
     return r;
 }
 
-int platform_input_read(uint8_t *slot)
+int plt_input_read(uint8_t *slot)
 {
     uint8_t r, k;
     if (remq(&kqueue, &r)) {
@@ -47,21 +47,22 @@ int platform_input_read(uint8_t *slot)
 	return 2;
     }
     if (mousemod) {
-        *slot++ = MOUSE_REL|mousebuttons;
+        *slot++ = MOUSE_REL;
+        *slot++ = mousebuttons;
         *slot++ = clampdec(&mousedx);
         *slot++ = clampdec(&mousedy);
         mousemod = !!(mousedx | mousedy);
-        return 3;
+        return 4;
     }
     return 0;
 }
 
-void platform_input_wait(void)
+void plt_input_wait(void)
 {
     psleep(&kqueue);
 }
 
-int platform_input_write(uint_fast8_t flag)
+int plt_input_write(uint_fast8_t flag)
 {
     flag;
     udata.u_error = EINVAL;

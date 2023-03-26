@@ -2,7 +2,8 @@
 ENTRY (_start)
 
 MEMORY {
-	flatmem : ORIGIN = 0x0, LENGTH = 0xfffffff
+	/* 0x20 so we allow for the stubs */
+	flatmem : ORIGIN = 0x20, LENGTH = 0xfffffff
 }
 
 PHDRS {
@@ -12,8 +13,8 @@ PHDRS {
 
 SECTIONS {
 
-	.text 0x0 : {
-		__stubs = . - 0x40;
+	.text : {
+		__stubs = . - 0x20;
 		. = . + 4;
 		. = ALIGN(0x4) ;
 		_stext = . ;
@@ -57,7 +58,6 @@ SECTIONS {
 	} > flatmem
 	__exidx_end = .;
 
-	. = ALIGN(0x20) ;
 	_etext = . ;
 
 	.data : {

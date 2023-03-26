@@ -6,10 +6,10 @@
 #define ALIGNUP(v)   alignup(v, 4)
 #define ALIGNDOWN(v) aligndown(v, 4)
 
-#define uputp    uputl            /* Copy user pointer type */
-#define ugetp(x) ugetl(x, NULL)   /* between user and kernel */
-#define uputi    uputl            /* Copy user int type */
-#define ugeti(x) ugetl(x, NULL)   /* between user and kernel */
+#define uputp    uputl          /* Copy user pointer type */
+#define ugetp(x) ugetl(x)	/* between user and kernel */
+#define uputi    uputl          /* Copy user int type */
+#define ugeti(x) ugetl(x)	/* between user and kernel */
 
 /* Allow a minimum of 512 bytes gap between stack and top of allocations */
 #define brk_limit() (udata.u_syscall_sp - 512)
@@ -71,3 +71,5 @@ extern void swap_blocks(void *, void *, unsigned int);
 
 #define ntohs(x) ((uint16_t)(__builtin_bswap16((uint16_t)(x))))
 #define ntohl(x) ((uint32_t)(__builtin_bswap32((uint32_t)(x))))
+
+#define NORETURN __attribute__((__noreturn__))

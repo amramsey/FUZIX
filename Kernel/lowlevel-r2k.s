@@ -22,11 +22,10 @@
 	        .globl map_save_kernel
        		.globl map_restore
 		.globl outchar
-		.globl _inint
-		.globl _platform_interrupt
-		.globl platform_interrupt_all
-	        .globl _platform_monitor
-		.globl _platform_switchout
+		.globl _plt_interrupt
+		.globl plt_interrupt_all
+	        .globl _plt_monitor
+		.globl _plt_switchout
 
         	; exported symbols
 		.globl null_handler
@@ -291,7 +290,7 @@ null_handler:
 		ld a, (_udata + U_DATA__U_INSYS)
 		or a,a
 		jp nz, trap_illegal
-		ld a, (_inint)
+		ld a, (_udata + U_DATA__U_ININTERRUPT)
 		jp nz, trap_illegal
 		; user is merely not good
 		ld hl, #7
@@ -314,7 +313,7 @@ trap_illegal:
 	        ld hl, #illegalmsg
 traphl:
 	        call outstring
-	        call _platform_monitor
+	        call _plt_monitor
 
 ;
 ;	Interrupt handler. Not quite the same as syscalls, we need to
@@ -360,17 +359,10 @@ interrupt_handler:
 		jr z, no_null_ptr
 		call null_pointer_trap
 no_null_ptr:
-		; So the kernel can check rapidly for interrupt status
-		; FIXME: move to the C code
-		ld a, #1
-		ld (_inint), a
 		; So we know that this task should resume with IRQs off
 		ld (_udata + U_DATA__U_ININTERRUPT), a
 
-		call _platform_interrupt
-
-		xor a,a
-		ld (_inint), a
+		call _plt_interrupt
 
 		ld a, (_need_resched)
 		or a,a
@@ -486,7 +478,7 @@ preemption:
 		inc hl
 		set PFL_BATCH,(hl)
 not_running:
-		call _platform_switchout
+		call _plt_switchout
 		;
 		; We are no longer in an interrupt or a syscall
 		;

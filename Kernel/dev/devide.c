@@ -49,31 +49,85 @@ bool devide_wait(uint_fast8_t bits)
     }
 }
 
-uint_fast8_t devide_transfer_sector(void)
+#ifdef CONFIG_IDE_CHS
+
+uint8_t ide_spt[IDE_DRIVE_COUNT];
+uint8_t ide_heads[IDE_DRIVE_COUNT];
+uint16_t ide_cyls[IDE_DRIVE_COUNT];
+
+uint32_t last_lba_b;
+uint8_t last_minor = 0xFF;
+uint8_t last_head;
+uint16_t last_cyl;
+
+static void ide_setup_block(uint_fast8_t drive)
 {
-    uint_fast8_t drive;
-#if defined(__SDCC_z80) || defined(__SDCC_z180) || defined(__SDCC_gbz80) || defined(__SDCC_r2k) || defined(__SDCC_r3k)
-    uint8_t *p;
-#endif
+    uint32_t sector = blk_op.lba;
+    uint32_t head;
+    uint16_t cyl;
 
+    /* Avoid the expensive 32bit maths (on 8bit anyway) by spotting
+       further requests on the same head/cylinder as for those we just
+       need to adjust the sector register */
+    if (drive == last_minor && sector >= last_lba_b &&
+        sector < last_lba_b + ide_spt[drive]) {
+        head = last_head;
+        cyl = last_cyl;
+        sector = blk_op.lba - last_lba_b;
+    } else {
+        head = sector / ide_spt[drive];
+        cyl = head / ide_heads[drive];
 
-    drive = blk_op.blkdev->driver_data & IDE_DRIVE_NR_MASK;
+        sector %= ide_spt[drive];
+        head %= ide_heads[drive];
+        head |= 0xA0;
 
-    ide_select(drive);
+        if (drive & 1)
+            head |= 0x10;
 
+        last_minor = drive;
+        last_lba_b = blk_op.lba - sector;	/* LBA of first block of this C/H */
+        last_head = head;
+        last_cyl = cyl;
+    }
+
+    /* Sector is 1 based */
+    sector++;
+    devide_writeb(ide_reg_lba_3, head);
+    devide_writeb(ide_reg_lba_2, ((uint16_t)cyl) >> 8);
+    devide_writeb(ide_reg_lba_1, cyl);
+    devide_writeb(ide_reg_lba_0, sector);
+
+/* kprintf("\nsb %u %u %u\n", (unsigned)cyl, (unsigned)head, (unsigned)sector); */
+}
+
+#else
+static void ide_setup_block(uint_fast8_t drive)
+{
 #if defined(__SDCC_z80) || defined(__SDCC_z180) || defined(__SDCC_gbz80) || defined(__SDCC_r2k) || defined(__SDCC_r3k)
     /* sdcc sadly unable to figure this out for itself yet */
-    p = ((uint8_t *)&blk_op.lba)+3;
-    devide_writeb(ide_reg_lba_3, (*(p--) & 0x0F) | ((drive == 0) ? 0xE0 : 0xF0)); // select drive, start loading LBA
+    uint8_t *p  = ((uint8_t *)&blk_op.lba)+3;
+    devide_writeb(ide_reg_lba_3, (*(p--) & 0x0F) | ((drive & 1) ? 0xF0 : 0xE0)); // select drive, start loading LBA
     devide_writeb(ide_reg_lba_2, *(p--));
     devide_writeb(ide_reg_lba_1, *(p--));
     devide_writeb(ide_reg_lba_0, *p);
 #else
-    devide_writeb(ide_reg_lba_3, ((blk_op.lba >> 24) & 0xF) | ((drive == 0) ? 0xE0 : 0xF0)); // select drive, start loading LBA
+    devide_writeb(ide_reg_lba_3, ((blk_op.lba >> 24) & 0xF) | ((drive & 1) ? 0xF0 : 0xE0)); // select drive, start loading LBA
     devide_writeb(ide_reg_lba_2, (blk_op.lba >> 16));
     devide_writeb(ide_reg_lba_1, (blk_op.lba >> 8));
     devide_writeb(ide_reg_lba_0, blk_op.lba);
 #endif
+}
+#endif
+
+uint_fast8_t devide_transfer_sector(void)
+{
+    uint_fast8_t drive;
+
+    drive = blk_op.blkdev->driver_data & IDE_DRIVE_NR_MASK;
+
+    ide_select(drive);
+    ide_setup_block(drive);
 
     if (!devide_wait(IDE_STATUS_READY))
 	goto fail;

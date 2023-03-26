@@ -23,6 +23,7 @@ platform-easy-z80/devfd_hw.rel
 platform-easy-z80/devices.rel
 devio.rel
 filesys.rel
+blk512.rel
 process.rel
 inode.rel
 syscall_exec.rel
@@ -52,6 +53,6 @@ platform-easy-z80/monitor.rel
 platform-easy-z80/devinput.rel
 platform-easy-z80/ds1302.rel
 platform-easy-z80/ds1302_discard.rel
-platform-easy-z80/ds1302_rc2014.rel
+platform-easy-z80/ds1302_rcbus.rel
 platform-easy-z80/net_native.rel
 -e

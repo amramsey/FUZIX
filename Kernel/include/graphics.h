@@ -15,6 +15,7 @@ struct display {
 #define FMT_TEXT	4	/* Text only mode */
 #define FMT_MONO_WB_TILE8 5	/* White on black 8x8 tiled (Amstrad PCW etc) */
 #define FMT_6PIXEL_128	6	/* 2x3 tiles from 128 (TRS80 style) */
+#define FMT_4PIXEL_128	7	/* 2x2 tiles from 128 (6847 style) */
 /* Those sufficiently funky */
 #define FMT_SPECTRUM	128
 #define FMT_VDP		129	/* VDP graphics engines */
@@ -36,6 +37,7 @@ struct display {
 #define HW_MICROLABS4	133	/* Microlabs Grafyx for Model 4 */
 #define HW_LOWE_LE18	134	/* Low Electronics LE-18 */
 #define HW_VDP_9958	135	/* VDP9958 MSX2+ etc */
+#define HW_EF9345	136	/* Thomson EF9345 */
   uint16_t features;
 #define GFX_MAPPABLE	1	/* Can map into process memory */
 #define GFX_PALETTE	2	/* Has colour palette */

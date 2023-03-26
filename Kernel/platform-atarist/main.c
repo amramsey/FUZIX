@@ -8,16 +8,16 @@
 uint8_t need_resched;
 uint16_t features;
 
-void platform_idle(void)
+void plt_idle(void)
 {
 }
 
-uint8_t platform_param(char *p)
+uint8_t plt_param(char *p)
 {
 	return 0;
 }
 
-void platform_discard(void)
+void plt_discard(void)
 {
 }
 
@@ -26,7 +26,7 @@ void memzero(void *p, usize_t len)
 	memset(p, 0, len);
 }
 
-void platform_copyright(void)
+void plt_copyright(void)
 {
 
 }
@@ -113,10 +113,10 @@ void install_vdso(void)
 {
 	extern uint8_t vdso[];
 	/* Should be uput etc */
-	memcpy((void *)udata.u_codebase, &vdso, 0x40);
+	memcpy((void *)udata.u_codebase, &vdso, 0x20);
 }
 
-uint8_t platform_udata_set(ptptr p)
+uint8_t plt_udata_set(ptptr p)
 {
 	u_block **up = &udata_block[p - ptab];
 	if (*up == NULL) {

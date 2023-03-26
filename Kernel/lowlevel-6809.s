@@ -35,8 +35,7 @@
         .globl map_restore
 	.globl outchar
 	.globl _need_resched
-	.globl _inint
-	.globl _platform_interrupt
+	.globl _plt_interrupt
 
         ; exported symbols
         .globl unix_syscall_entry
@@ -54,7 +53,7 @@
 	.globl _set_cpu_type
 
         ; imported symbols
-        .globl _platform_monitor
+        .globl _plt_monitor
         .globl _unix_syscall
         .globl outstring
         .globl kstack_top
@@ -181,6 +180,8 @@ _doexec:
 	; preserves x
         jsr map_process_always
 
+	; base address
+	ldy U_DATA__U_CODEBASE
         ; u_data.u_insys = false
         clr U_DATA__U_INSYS
 	; At this point the stack goes invalid
@@ -193,7 +194,27 @@ _doexec:
 ;	poll ttys from it. The more logic we could move to common here the
 ;	better.
 ;
+
+
+;
+;	Called when interrupts have been re-enabled within the timer
+;	interrupt. We hand it to the platform re-interrupt handler. If
+;	none is expected then it can panic, or if the platform is clever
+;	it can do the needed work.
+;
+reinterrupt:
+	jsr _plt_reinterrupt
+	; Signals and other magic will happen when the first level of
+	; interrupt handling returns
+	rti
+
 interrupt_handler:
+	; If the platform interrupt code re-enabled interrupts then
+	; we are on the interrupt stack already and platform author
+	; is assumed to know what they are doing 8)
+	tst U_DATA__U_ININTERRUPT
+	bne reinterrupt
+
 	; Do not use the stack before the switch...
 	; FIXME: add profil support here (need to keep profil ptrs
 	; unbanked if so ?)
@@ -224,18 +245,14 @@ interrupt_handler:
 nofault:
 in_kernel:
         jsr map_kernel
-        ; set inint to true
-        lda #1
-        sta _inint
 
 	;
 	; If the kernel decides to task switch it will set
 	; _need_resched, and will only do so if the caller was in
 	; user space so has a free kernel stack
 
-        jsr _platform_interrupt
+        jsr _plt_interrupt
 
-        clr _inint
         ldx istack_switched_sp	; stack back
         clr U_DATA__U_ININTERRUPT
         lda U_DATA__U_INSYS
@@ -261,7 +278,7 @@ in_kernel:
 not_running:
 	; Sleep on the kernel stack, IRQs will get re-enabled if need
 	; be
-	jsr _platform_switchout
+	jsr _plt_switchout
 	;
 	; We will resume here after the pre-emption. Get back onto
 	; the user stack and map ourself in
@@ -287,9 +304,12 @@ intdone:
 
 interrupt_return:
         rti
+	;	From kernel
+	;	Restore the user mapping then
+	;	switch to the user stack ptr
 interrupt_return_x:
+	jsr map_restore
 	tfr x,s
-	jsr	map_restore
 	bra interrupt_return
 
 ;  Enter with X being the signal to send ourself
@@ -323,7 +343,7 @@ illegalmsg: .ascii "[trap_illegal]"
 trap_illegal:
 	ldx #illegalmsg
 	jsr outstring
-	jsr _platform_monitor
+	jsr _plt_monitor
 
 dpsmsg:	.ascii "[dispsig]"
         .db 13,10,0
@@ -337,7 +357,7 @@ nmi_handler:
 	jsr map_kernel
         ldx #nmimsg
 	jsr outstring
-        jsr _platform_monitor
+        jsr _plt_monitor
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;	CPU type management
@@ -441,7 +461,7 @@ num:    adda #0x30 ; start at '0' (0x30='0')
 div0:
 	ldx	#div0msg
 	jsr	outstring
-	jsr	_platform_monitor
+	jsr	_plt_monitor
 div0msg	.ascii	'Divby0'
 	.db	13,10,0
 ;

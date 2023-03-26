@@ -12,12 +12,12 @@ set_cpu_type:
 .comm sys_cpu, 1
 .comm sys_cpu_feat, 1
 
-.section .text.platform_doexec
+.section .text.plt_doexec
 .align 4
-.global platform_doexec
+.global plt_doexec
 # a2 = start address
 # a3 = new stack pointer
-platform_doexec:
+plt_doexec:
 	movi a4, 32
 	wsr.ps a4			# set user mode (and enable interrupts)
 	mov.n sp, a3
@@ -326,7 +326,7 @@ interrupt:
 	# Stack switch - we keep the minimum on istack for preemption
 	# reasons
 	mov.n a2,a1
-	movi a1, istack + 512
+	movi a1, istack_end - 4
 	s32i.n a2, a1, 0			# Save it in the word at the top
 	movi a3, udata
 	movi a2, 1
@@ -338,7 +338,7 @@ interrupt:
 	and a2,a2,a3
 	call0 interrupt_handler
 	# Restore the state
-	movi a2, istack + 512
+	movi a2, istack_end - 4
 	l32i.n a1, a2, 0
 	movi a12, udata
 	l8ui a2, a12, U_DATA__U_INSYS

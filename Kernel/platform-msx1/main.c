@@ -3,6 +3,7 @@
 #include <kdata.h>
 #include <printf.h>
 #include <devtty.h>
+#include <blkdev.h>
 #include <msx.h>
 
 /* These are set by the msx startup asm code */
@@ -15,7 +16,9 @@ uint8_t vdptype;
 uint8_t *bouncebuffer;
 uint16_t devtab[4][4][3];
 
-void platform_idle(void)
+struct blkbuf *bufpool_end = bufpool + NBUFS;
+
+void plt_idle(void)
 {
     __asm
     halt
@@ -24,7 +27,7 @@ void platform_idle(void)
 
 /* Some of this is discard stuff */
 
-uint8_t platform_param(char *p)
+uint8_t plt_param(char *p)
 {
     used(p);
     return 0;
@@ -34,7 +37,7 @@ void do_beep(void)
 {
 }
 
-void platform_interrupt(void)
+void plt_interrupt(void)
 {
         uint8_t r = in((uint8_t)vdpport);
         if (r & 0x80) {
@@ -44,11 +47,20 @@ void platform_interrupt(void)
         }
 }
 
-void platform_discard(void)
+void plt_discard(void)
 {
+    unsigned n = 0;
     /* Until we tackle the buffers. When we do we will reserve 512 bytes
        at the end (probably FDFE-FFFE (FFFF being magic)) */
-    bouncebuffer = (uint8_t *)0xFD00;	/* Hack for now */
+    bouncebuffer = (uint8_t *)0xFDFE;	/* Hack for now */
+    while(bufpool_end + 1 <= (void *)bouncebuffer) {
+        memset(bufpool_end, 0, sizeof(*bufpool_end));
+        bufpool_end->bf_dev = NO_DEVICE;
+        bufpool_end->bf_busy = BF_FREE;
+        bufpool_end++;
+        n++;
+    }
+    kprintf("%d buffers added\n", n);
 }
 
 uint8_t device_find(const uint16_t *romtab)
@@ -68,4 +80,50 @@ uint8_t device_find(const uint16_t *romtab)
     romtab++;
   }
   return 0xFF;
+}
+
+/*
+ *	They joy of MSX - block I/O bounce handling
+ *
+ *	General purpose wrapper for blkdev devices with low level MMIO mapped in
+ *	the 4000-7FFF range. We have to bounce accesses to 4000-7FFF. This differs
+ *	from sane machines with MMIO windows or with I/O space mappings. MSX2 has
+ *	the same disease but we are able to use the MSX2 mapper to move banks to
+ *	other address ranges, something MSX1 cannot handle.
+ */
+unsigned blk_xfer_bounced(xferfunc_t xferfunc, uint16_t arg)
+{
+    uint8_t *addr = blk_op.addr;
+    uint8_t old_user = blk_op.is_user;
+
+    /* Shortcut: this range can only occur for a user mode I/O */
+    if (addr >= (uint8_t *)0x3E00U && addr < (uint8_t *)0x8000U) {
+        /* We can't just use tmpbuf because the buffer might be dirty which would
+           trigger a recursive I/O and then badness happens */
+        blk_op.addr = bouncebuffer;
+        blk_op.is_user = 0;
+//        kprintf("bounced do_xfer %p %x:", addr, mask);
+        if (blk_op.is_read) {
+            if (xferfunc(arg))
+                goto fail;
+            uput(blk_op.addr, addr, 512);
+        } else {
+            uget(addr, blk_op.addr, 512);
+            if (xferfunc(arg))
+                goto fail;
+        }
+//        kprintf("bounced done.\n");
+        blk_op.addr = addr;
+        blk_op.is_user = old_user;
+        return 1;
+    }
+//    kprintf("do_xfer %d %p %x..", blk_op.is_user, addr, mask);
+    if (xferfunc(arg) == 0) {
+//        kputs("done.\n");
+        return 1;
+    }
+fail:
+    blk_op.addr = addr;
+    blk_op.is_user = old_user;
+    return 0;
 }

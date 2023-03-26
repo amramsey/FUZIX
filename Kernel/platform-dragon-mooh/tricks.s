@@ -7,18 +7,18 @@
         .globl _makeproc
         .globl _chksigs
         .globl _getproc
-        .globl _platform_monitor
+        .globl _plt_monitor
         .globl _inint
         .globl map_kernel
         .globl map_process_a
         .globl map_process_always
         .globl copybank
 	.globl _nready
-	.globl _platform_idle
+	.globl _plt_idle
 	.globl _udata
 
 	# exported
-        .globl _platform_switchout
+        .globl _plt_switchout
         .globl _switchin
         .globl _dofork
 	.globl _ramtop
@@ -41,7 +41,7 @@ newpp   .dw 0
 ; restarted after calling switchout, it thinks it has just returned
 ; from switchout().
 ;
-_platform_switchout:
+_plt_switchout:
 	orcc #0x10		; irq off
 
         ; save machine state, including Y and U used by our C code
@@ -55,11 +55,11 @@ _platform_switchout:
 	; FIXME could map in only the bank that holds the stash
 	jsr map_process_always
 
-	ldx #U_DATA
+	ldx #_udata
 	ldy #U_DATA_STASH
 stash:	ldd ,x++
 	std ,y++
-	cmpx #U_DATA+U_DATA__TOTALSIZE
+	cmpx #_udata+U_DATA__TOTALSIZE
 	bne stash
 
 	; get process table in
@@ -69,7 +69,7 @@ stash:	ldd ,x++
         jsr _getproc
         jsr _switchin
         ; we should never get here
-        jsr _platform_monitor
+        jsr _plt_monitor
 
 badswitchmsg: .ascii "_switchin: FAIL"
             .db 13
@@ -101,7 +101,7 @@ not_swapped:
 	
 	; fetch uarea from process memory
 	ldx #U_DATA_STASH
-	ldy #U_DATA
+	ldy #_udata
 stashb	ldd ,x++
 	std ,y++
 	cmpx #U_DATA_STASH+U_DATA__TOTALSIZE
@@ -146,7 +146,7 @@ switchinfail:
         ldx #badswitchmsg
         jsr outstring
 	; something went wrong and we didn't switch in what we asked for
-        jmp _platform_monitor
+        jmp _plt_monitor
 
 	.area .data
 
@@ -227,11 +227,11 @@ notlst	ldb ,x+				; dst
 ; stash parent uarea (including kernel stack)
 	ldx U_DATA__U_PAGE		; old bank
 	jsr map_process_a
-	ldx #U_DATA
+	ldx #_udata
 	ldu #U_DATA_STASH
 stashf	ldd ,x++
 	std ,u++
-	cmpx #U_DATA+U_DATA__TOTALSIZE
+	cmpx #_udata+U_DATA__TOTALSIZE
 	bne stashf
 	jsr map_kernel
 	ldx fork_proc_ptr

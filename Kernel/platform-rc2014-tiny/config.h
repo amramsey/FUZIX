@@ -53,6 +53,7 @@ extern uint16_t swap_dev;
 #define MAX_BLKDEV 2	    /* 2 IDE */
 
 /* On-board DS1302, we can read the time of day from it */
+#define CONFIG_RTC_DS1302
 #define CONFIG_RTC
 #define CONFIG_RTC_FULL
 #define CONFIG_NO_CLOCK
@@ -70,4 +71,4 @@ extern uint16_t swap_dev;
 
 #define TTYDEV   BOOT_TTY /* Device used by kernel for messages, panics */
 
-#define platform_copyright()
+#define plt_copyright()

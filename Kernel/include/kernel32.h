@@ -22,10 +22,14 @@ extern void kmemaddblk(void *, size_t);
 extern void pagemap_switch(ptptr p, int death);
 #if !defined PROGLOAD
 extern uaddr_t pagemap_base(void);
-#define PROGLOAD pagemap_base()
+#define PROGLOAD udata.u_codebase
 #endif
-extern uint32_t ugetl(void *uaddr, int *err);
+
+/* On a minimal system these are macros */
+#ifndef ugetl
+extern uint32_t ugetl(void *uaddr);
 extern int uputl(uint32_t val, void *uaddr);
+#endif
 
 extern void install_vdso(void);
 

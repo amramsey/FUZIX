@@ -49,14 +49,14 @@ extern unsigned char vt_map_char(unsigned char);
 #define KEY_COLS	8
 
 #define TICKSPERSEC 40	    /* Ticks per second */
-#define PROGBASE    0x7000  /* Base of user  */
-#define PROGLOAD    0x7000  /* Load and run here */
+#define PROGBASE    0x5000  /* Base of user  */
+#define PROGLOAD    0x5000  /* Load and run here */
 #define PROGTOP     0xFFFF  /* Top of program */
-#define PROC_SIZE   32 	    /* Memory needed per process */
+#define PROC_SIZE   44 	    /* Memory needed per process */
 
-#define SWAP_SIZE   0x49 	/* 32.5K in blocks */
-#define SWAPBASE    0x7000	/* We swap the lot in one, include the */
-#define SWAPTOP	    0x10000UL	/* vectors so its a round number of sectors */
+#define SWAP_SIZE   0x59 	/* 44.5K in blocks */
+#define SWAPBASE    0x5000	/* We swap the lot in one */
+#define SWAPTOP	    0x10000UL
 
 #define MAX_SWAPS	16	/* Should be plenty (512K!) */
 
@@ -75,7 +75,7 @@ extern unsigned char vt_map_char(unsigned char);
 #define NBUFS    4         /* Number of block buffers - keep in sync with asm! */
 #define NMOUNTS	 4	   /* Number of mounts at a time */
 
-extern void platform_discard(void);
-#define platform_copyright()
+extern void plt_discard(void);
+#define plt_copyright()
 
 #define BOOTDEVICENAMES "hd#"

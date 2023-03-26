@@ -11,6 +11,8 @@
 #include <printf.h>
 #include <ds1302.h>
 
+#ifdef CONFIG_RTC_DS1302
+
 /****************************************************************************/
 /* Code in this file is used only once, at startup, so we want it to live   */
 /* in the DISCARD segment. sdcc only allows us to specify one segment for   */
@@ -67,12 +69,14 @@ uint_fast8_t ds1302_check_rtc(void)
 uint_fast8_t ds1302_init(void)
 {
     /* initialise the hardware into a sensible state */
-    ds1302_set_pin_data_driven(true);
-    ds1302_set_pin_data(false);
-    ds1302_set_pin_ce(false);
-    ds1302_set_pin_clk(false);
+    ds1302_set_driven(true);
+    ds1302_set_data(false);
+    ds1302_set_ce(false);
+    ds1302_set_clk(false);
     if (ds1302_check_rtc() == 0)
         return 0;
     ds1302_present = 1;
     return 1;
 }
+
+#endif

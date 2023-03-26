@@ -15,6 +15,7 @@
 	    .globl map_buffers
 	    .globl map_kernel
 	    .globl map_kernel_di
+	    .globl map_kernel_restore
 	    .globl map_process
 	    .globl map_process_a
 	    .globl map_process_always
@@ -22,13 +23,13 @@
 	    .globl map_save_kernel
 	    .globl map_restore
 	    .globl map_for_swap
-	    .globl platform_interrupt_all
+	    .globl plt_interrupt_all
 	    .globl _kernel_flag
 	    .globl _int_disabled
 
             ; exported debugging tools
-            .globl _platform_monitor
-            .globl _platform_reboot
+            .globl _plt_monitor
+            .globl _plt_reboot
             .globl outchar
 
             ; imported symbols
@@ -73,7 +74,7 @@ _int_disabled:
 ;	complex handling is done. It's useful on a few platforms but
 ;	generally a ret is all that is needed
 ;
-platform_interrupt_all:
+plt_interrupt_all:
 	    ret
 
 ;
@@ -82,10 +83,10 @@ platform_interrupt_all:
 ;
 ;	Wait for a key as the monitor does a screen clear
 ;
-_platform_monitor:
+_plt_monitor:
 	    in a,(0x15)
 	    rrca
-	    jr nc, _platform_monitor
+	    jr nc, _plt_monitor
 	    ; Fall through
 ;
 ;	Reboot the system if possible, halt if not. On a system where the
@@ -93,7 +94,7 @@ _platform_monitor:
 ;	a keypress here (just remember you may be interrupts off, no kernel
 ;	mapped so hit the hardware).
 ;
-_platform_reboot:
+_plt_reboot:
 	    di
 	    xor a
 	    out (0xF8),a
@@ -217,6 +218,7 @@ _program_vectors:
 map_buffers:
 	   ; for us no difference. We could potentially use a low 32K bank
 	   ; for buffers but it's not clear it would gain us much value
+map_kernel_restore:
 map_kernel_di:
 map_kernel:
 	    push af

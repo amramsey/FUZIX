@@ -36,20 +36,20 @@ void map_init(void)
 	}
 }
 
-void platform_discard(void) {}
+void plt_discard(void) {}
 
-void platform_monitor(void)
+void plt_monitor(void)
 {
 	while(1)
 		asm volatile ("waiti 15");
 }
 
-void platform_reboot(void)
+void plt_reboot(void)
 {
 	system_restart();
 }
 
-uint_fast8_t platform_param(char* p)
+uint_fast8_t plt_param(char* p)
 {
 	return 0;
 }
@@ -73,11 +73,12 @@ int main(void)
 		panic("bad offsets");
 	}
 
-	ramsize = 80;
-	procmem = 64;
+	ramsize = 128;
+	procmem = 96;
 	kputs("\n\n\n");
 	sys_cpu_feat = AF_LX106_ESP8266;
 
+    memset(&udata, 0, UDATA_SIZE);
 
 	/* And off we go */
 	fuzix_main();

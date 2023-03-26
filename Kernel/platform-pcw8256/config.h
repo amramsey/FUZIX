@@ -29,6 +29,8 @@
 #define VT_RIGHT	89
 #define VT_BOTTOM	31
 
+#define CONFIG_FDC765
+
 #define CONFIG_INPUT
 #define CONFIG_INPUT_GRABMAX 3
 #define MAX_BLKDEV	2	/* UIDE or Joyce never both */
@@ -69,7 +71,7 @@ extern uint16_t swap_dev;
 #define CONFIG_LARGE_IO_DIRECT(x)	1
 
 
-#define platform_discard()
-#define platform_copyright()
+#define plt_discard()
+#define plt_copyright()
 
 #define BOOTDEVICENAMES "hd,fd#"

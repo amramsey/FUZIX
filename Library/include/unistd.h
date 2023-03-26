@@ -27,7 +27,7 @@ extern int usleep(useconds_t __usecs);
 
 extern char **environ;
 
-extern const char * _findPath(const char *__pathname);
+extern const char * _findPath(char *buf, const char *__pathname);
 extern int execl(const char *__pathname, const char *__arg0, ...);
 extern int execle(const char *__pathname, const char *__arg0, ...);
 extern int execlp(const char *__pathname, const char *__arg0, ...);
@@ -88,6 +88,8 @@ extern long _pathconf(int __name);
 #define _PC_CHOWN_RESTRICTED	7
 #define _PC_NO_TRUNC		8
 #define _PC_VDISABLE		9
+
+#define _CS_PATH		1
 
 #define _POSIX_LINK_MAX		_pathconf(_PC_LINK_MAX)
 #define _POSIX_MAX_CANON	_pathconf(_PC_MAX_CANON)
