@@ -1,5 +1,5 @@
 /****************************************************
-FUZIX (Unix Z80 Implementation) Kernel:  unix.h
+FUZIX (Unix clone implementation) Kernel:  unix.h
 From UZI by Doug Braun and UZI280 by Stefan Nitschke.
 *****************************************************/
 /* History:
@@ -88,18 +88,34 @@ From UZI by Doug Braun and UZI280 by Stefan Nitschke.
 
 /* Maximum UFTSIZE can be is 16, then you need to alter the O_CLOEXEC code */
 
+#ifdef CONFIG_SMALL
 #ifndef UFTSIZE
-#define UFTSIZE 10       /* Number of user files */		/*280 = 22*/
+#define UFTSIZE		10	/* User files */
 #endif
 #ifndef OFTSIZE
-#define OFTSIZE 15       /* Open file table size */		/*280 = 45*/
+#define OFTSIZE		15	/* Open files */
 #endif
 #ifndef ITABSIZE
-#define ITABSIZE 20      /* Inode table size */			/*280 = 45*/
+#define ITABSIZE	20	/* Inodes */
 #endif
 #ifndef PTABSIZE
-#define PTABSIZE 15      /* Process table size. */
+#define PTABSIZE	15	/* Processes */
 #endif
+#else
+#ifndef UFTSIZE
+#define UFTSIZE		16	/* Number of user files */
+#endif
+#ifndef OFTSIZE
+#define OFTSIZE		56	/* Open file table size */
+#endif
+#ifndef ITABSIZE
+#define ITABSIZE	45	/* Inode table size */
+#endif
+#ifndef PTABSIZE
+#define PTABSIZE	16      /* Process table size. */
+#endif
+#endif
+
 #ifndef MAPBASE		/* Usually the start of program and map match */
 #define MAPBASE PROGBASE
 #endif
@@ -472,6 +488,7 @@ typedef struct p_tab {
 #define PFL_BATCH	4	/* Used full time quantum */
 #define PFL_GRAPHICS	8	/* Graphics hint flag for some platforms
                                    (platform owned) */
+#define PFL_SWAPIN	16	/* Swapped in but not yet run */
     uint8_t     p_tty;          /* Process' controlling tty minor # */
     uint16_t    p_pid;          /* Process ID */
     uint16_t    p_uid;
@@ -806,6 +823,10 @@ typedef struct {
  */
 
 /*
+ *	RTC ioctls 0x050x (see rtc.h)
+ */
+
+/*
  *	Input ioctls 0x052x (see input.h)
  */
 
@@ -813,8 +834,9 @@ typedef struct {
  *	GPIO ioctls 0x053x (see gpio.h)
  */
 
+
 /*
- *	RTC ioctls 0x053x (see rtc.h)
+ *	I2C ioctls 0x054x
  */
 
 /*
@@ -1190,6 +1212,7 @@ extern void plt_monitor(void);
 extern uint_fast8_t plt_param(char *p);
 extern void plt_switchout(void);
 extern void plt_interrupt(void);
+extern void plt_reinterrupt(void);
 extern uint_fast8_t plt_suspend(void);
 extern uint_fast8_t plt_udata_set(ptptr p);
 

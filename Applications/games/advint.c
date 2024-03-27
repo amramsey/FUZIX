@@ -416,8 +416,8 @@ void print(int msg)
 /* pnumber - print a number */
 void pnumber(int n)
 {
-	char buf[10];
 #ifdef __linux__
+	char buf[10];
 	sprintf(buf, "%d", n);
 	trm_str(buf);
 #else
@@ -1359,7 +1359,7 @@ char *trm_get(char *line)
 }
 
 /* trm_str - output a string */
-void trm_str(char *str)
+void trm_str(const char *str)
 {
 	while (*str)
 		trm_chr(*str++);

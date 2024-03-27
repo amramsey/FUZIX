@@ -7,14 +7,14 @@
 
 	.module softspi
 
-	.globl _spi_transmit_byte
-	.globl _spi_receive_byte
+	.globl _spi_tx_byte
+	.globl _spi_rx_byte
 	.globl spi0_set_regs
 	.globl spi0_bitbang_rx
 	.globl spi0_bitbang_tx
 
         .include "kernel.def"
-        .include "../kernel-z80.def"
+        .include "../../cpu-z80/kernel-z80.def"
 
 
 	.globl _spi_port		; Port to use
@@ -51,7 +51,7 @@ spi0_set_regs:
 	ld bc, (_spi_port)
 	ret	
 
-_spi_transmit_byte:
+_spi_tx_byte:
 	ld a,l				; C argument
 	push af
 	call spi0_set_regs
@@ -60,7 +60,7 @@ _spi_transmit_byte:
 	out (c),e			; drop final clock
 	ret
 
-_spi_receive_byte:
+_spi_rx_byte:
 	call spi0_set_regs
 	call spi0_bitbang_rx
 	out (c),e
@@ -78,18 +78,78 @@ _spi_receive_byte:
 ;	do that many writes compared to reads.
 ;	
 spi0_bitbang_tx:
-	ld b,#8			; 7
-spi0_bit_tx:
+spi0_bit0_tx:
 	rla			; 4
-	jp nc, spi0_tx0		; 10		For SPI 0
+	jr nc, spi0_bit0_tx0	; 10		For SPI 0
 	out (c),l		; 12		low | 1
 	out (c),h		; 12		high | 1	(sample)
-	djnz spi0_bit_tx	; 13/8
-	ret			; 10
-spi0_tx0:
+	jr spi0_bit1_tx		; 10
+spi0_bit0_tx0:
 	out (c),e		; 12		low | 0
 	out (c),d		; 12		high | 0	(sample)
-	djnz spi0_bit_tx	; 13/8
+spi0_bit1_tx:
+	rla
+	jr nc, spi0_bit1_tx0
+	out (c),l
+	out (c),h
+	jr spi0_bit2_tx
+spi0_bit1_tx0:
+	out (c),e
+	out (c),d
+spi0_bit2_tx:
+	rla
+	jr nc, spi0_bit2_tx0
+	out (c),l
+	out (c),h
+	jr spi0_bit3_tx
+spi0_bit2_tx0:
+	out (c),e
+	out (c),d
+spi0_bit3_tx:
+	rla
+	jr nc, spi0_bit3_tx0
+	out (c),l
+	out (c),h
+	jr spi0_bit4_tx
+spi0_bit3_tx0:
+	out (c),e
+	out (c),d
+spi0_bit4_tx:
+	rla
+	jr nc, spi0_bit4_tx0
+	out (c),l
+	out (c),h
+	jr spi0_bit5_tx
+spi0_bit4_tx0:
+	out (c),e
+	out (c),d
+spi0_bit5_tx:
+	rla
+	jr nc, spi0_bit5_tx0
+	out (c),l
+	out (c),h
+	jr spi0_bit6_tx
+spi0_bit5_tx0:
+	out (c),e
+	out (c),d
+spi0_bit6_tx:
+	rla
+	jr nc, spi0_bit6_tx0
+	out (c),l
+	out (c),h
+	jr spi0_bit7_tx
+spi0_bit6_tx0:
+	out (c),e
+	out (c),d
+spi0_bit7_tx:
+	rla
+	jr nc, spi0_bit7_tx0
+	out (c),l
+	out (c),h
+	ret
+spi0_bit7_tx0:
+	out (c),e
+	out (c),d
 	ret
 ;
 ;	Send 0xFF and receive a byte.

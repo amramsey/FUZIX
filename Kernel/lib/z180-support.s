@@ -5,7 +5,7 @@
 	.module z180_support
 	.z180
 
-        .include "../cpu-z180/z180.def"
+        .include "../../cpu-z180/z180.def"
 
 	.globl _z180_setup
         .globl interrupt_table ; not used elsewhere but useful to check correct alignment
@@ -15,6 +15,7 @@
 ;
 ;	Set up the Z180 timers, interrupt table etc
 ;
+	.area	_CODE1
 
 _z180_setup:
 	ld e,l		; save timer flag

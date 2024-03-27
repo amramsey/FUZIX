@@ -27,7 +27,11 @@ typedef struct {
 #define EXIT_FAILURE 1
 #define EXIT_SUCCESS 0
 
+#ifdef __GNUC__
+extern void exit(int __status) __attribute__((noreturn));
+#else
 extern void exit(int __status);
+#endif
 extern void abort(void);
 
 
@@ -47,13 +51,13 @@ extern double atof(const char *__nptr);
 
 extern int abs(int __i);
 extern long labs(long __i);
-extern char *_itoa(int __value);
-extern char *_uitoa(unsigned int __value);
-extern char *_ltoa(long __value);
-extern char *_ultoa(unsigned long __value);
+extern const char *_itoa(int __value);
+extern const char *_uitoa(unsigned int __value);
+extern const char *_ltoa(long __value);
+extern const char *_ultoa(unsigned long __value);
 
-extern char *__ultostr_r(char *buf, unsigned long value, int __radix);
-extern char *__ltostr_r(char *buf, long __value, int __radix);
+extern char *__ultostr_r(char buf[34], unsigned long value, int __radix);
+extern char *__ltostr_r(char buf[34], long __value, int __radix);
 
 extern long strtol(const char *__nptr, char **__endptr, int __base);
 extern unsigned long strtoul(const char *__nptr,

@@ -21,8 +21,8 @@ static void write_call(int n)
     perror(namebuf);
     exit(1);
   }
-  fprintf(fp, "\t.sect .text\n\n");
-  fprintf(fp, "\t.define _%s\n\n", syscall_name[n]);
+  fprintf(fp, "\t.code\n\n");
+  fprintf(fp, "\t.export _%s\n\n", syscall_name[n]);
   fprintf(fp, "_%s:\n\tmvi a,%d\n", syscall_name[n], n);
   fprintf(fp, "\tjmp __syscall\n");
   fclose(fp);
@@ -55,9 +55,9 @@ static void write_makefile(void)
   fprintf(fp, "\nAOBJS = $(ASRCALL:.s=.o)\n\n");
   fprintf(fp, "syslib.lib: $(AOBJS)\n");
   fprintf(fp, "\techo $(AOBJS) >syslib.l\n");
-  fprintf(fp, "\taal rc syslib.lib $(AOBJS)\n\n");
+  fprintf(fp, "\tar rc syslib.lib $(AOBJS)\n\n");
   fprintf(fp, "$(AOBJS): %%.o: %%.s\n");
-  fprintf(fp, "\tack -mfuzix -c -o $*.o $<\n\n");
+  fprintf(fp, "\tfcc -m8080 -c -o $*.o $<\n\n");
   fprintf(fp, "clean:\n");
   fprintf(fp, "\trm -f $(AOBJS) $(ASRCS) syslib.lib *~\n\n");
   fclose(fp);

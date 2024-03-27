@@ -27,16 +27,15 @@
 	.globl _udata
 
 	.globl map_kernel
-	.globl map_process
-	.globl map_process_a
-	.globl map_process_always
+	.globl map_proc_a
+	.globl map_proc_always
 
 
         ; imported debug symbols
         .globl outstring, outde, outhl, outbc, outnewline, outchar, outcharhex
 
         .include "kernel.def"
-        .include "../kernel-z80.def"
+        .include "../../cpu-z80/kernel-z80.def"
 
         .area _COMMONMEM
 
@@ -57,7 +56,7 @@ _plt_switchout:
         ld (_udata + U_DATA__U_SP), sp ; this is where the SP is restored in _switchin
 
 	; Stash the uarea back into process memory
-	call map_process_always
+	call map_proc_always
 	ld hl, #_udata
 	ld de, #U_DATA_STASH
 	ld bc, #U_DATA__TOTALSIZE
@@ -74,9 +73,9 @@ _plt_switchout:
         call _plt_monitor
 
 badswitchmsg: .ascii "_switchin: FAIL"
-            .db 13, 10, 0
+	.db 13, 10, 0
 swapped: .ascii "_switchin: SWAPPED"
-            .db 13, 10, 0
+	.db 13, 10, 0
 
 _switchin:
         di
@@ -147,11 +146,9 @@ not_swapped:
 	jr z, skip_copyback	; Tormod's optimisation: don't copy the
 				; the stash back if we are the task who
 				; last owned the real udata
+	ld a,(hl)
 	; Pages please !
-	; FIXME: in 0.4 we will move to map_process_hl so that this code
-	; works nicely for multibank cases. For now arrange that HL is
-	; valid as well as A
-	call map_process_a
+	call map_proc_a
 
         ; bear in mind that the stack will be switched now, so we can't use it
 	; to carry values over this point
@@ -211,7 +208,6 @@ switchinfail:
 	; something went wrong and we didn't switch in what we asked for
         jp _plt_monitor
 
-fork_proc_ptr: .dw 0 ; (C type is struct p_tab *) -- address of child process p_tab entry
 
 ;
 ;	Called from _fork. We are in a syscall, the uarea is live as the
@@ -274,7 +270,7 @@ _dofork:
 
 	; Copy done
 
-	call map_process_always
+	call map_proc_always
 
 	; We are going to copy the uarea into the parents uarea stash
 	; we must not touch the parent uarea after this point, any
@@ -310,6 +306,8 @@ _dofork:
 	; to be the live uarea. The parent is frozen in time and space as
 	; if it had done a switchout().
         ret
+
+	.area _COMMONDATA
 ;
 ;	For the moment
 ;
@@ -324,3 +322,4 @@ bouncebuffer:
 ;
 _swapstack:
 _need_resched:	.db 0
+fork_proc_ptr: .dw 0 ; (C type is struct p_tab *) -- address of child process p_tab entry

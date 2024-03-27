@@ -15,21 +15,25 @@ _longjmp:
 	jnz	retok
 	inx	h
 retok:
-	shld	__tmp		; save return code
+	mov	c,l
+	mov	b,h		; save return code
 	ldsi	2
 	lhlx			; address of buffer 
 	xchg			; to DE
 	lhlx			; get value for SP restore
+	inx	h		; discard old return address
+	inx	h
 	sphl			; restore SP
 	inx	d
 	inx	d
 	lhlx			; return address
 	push	h		; put it back
+	push	b		; return code
 	inx	d
 	inx	d
 	xchg			; buffer back into HL
-	mov	c,m		; Save BC
+	mov	c,m		; restore BC
 	inx	h
 	mov	b,m
-	lhld	__tmp
+	pop	h		; return code
 	ret

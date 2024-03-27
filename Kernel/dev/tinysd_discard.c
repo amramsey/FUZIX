@@ -7,6 +7,7 @@
 #include <kernel.h>
 #include <tinydisk.h>
 #include <tinysd.h>
+#include <printf.h>
 
 #ifdef CONFIG_TD_SD
 
@@ -26,20 +27,22 @@ static uint8_t sendcmd(uint8_t *cmd)
     uint8_t n = 0;
     uint8_t r;
     sd_spi_raise_cs();
-    sd_spi_receive_byte();
+    sd_spi_rx_byte();
     sd_spi_lower_cs();
     if (*cmd != 0x40) {
-        while(++n && sd_spi_receive_byte() != 0xFF);
+        while(++n && sd_spi_rx_byte() != 0xFF);
         if (n == 0)
             return 0xFF;
     }
     n = 0;
     while(++n <= 6)
-        sd_spi_transmit_byte(*cmd++);
-    sd_spi_receive_byte();
+        sd_spi_tx_byte(*cmd++);
+#ifndef CONFIG_TD_SD_EMUBUG        
+    sd_spi_rx_byte();
+#endif
     n = 0xA0;
     while(++n) {
-        r = sd_spi_receive_byte();
+        r = sd_spi_rx_byte();
         if (!(r & 0x80))
             break;
     }
@@ -62,7 +65,7 @@ static void sd_get4(void)
     uint8_t *p = sdbuf;
     uint_fast8_t n = 0;
     while(++n <= 4)
-        *p++ = sd_spi_receive_byte();
+        *p++ = sd_spi_rx_byte();
 }
 
 static uint8_t sdhc_init(void)
@@ -99,9 +102,9 @@ static uint8_t sd_try_init(void)
 {
     uint_fast8_t n = 0;
     sd_spi_raise_cs();
-    sd_spi_receive_byte();
+    sd_spi_rx_byte();
     while(++n <= 8)
-        sd_spi_receive_byte();
+        sd_spi_rx_byte();
     if (sendcmd(cmd0) != 1)
         return CT_NONE;
     if (sendcmd(cmd8) == 1)
@@ -117,12 +120,13 @@ static uint8_t sd_try_init(void)
     return CT_SD1;
 }
 
-uint8_t sd_init(void)
+uint8_t sd_init(uint_fast8_t unit)
 {
     uint_fast8_t n = 0;
     uint8_t r;
 
     tinysd_busy = 1;
+    tinysd_unit = unit;
     sd_spi_slow();
 
     do {
@@ -132,4 +136,27 @@ uint8_t sd_init(void)
     tinysd_busy = 0;
     return r;
 }
+
+#ifdef TD_SD_NUM
+
+void sd_probe(void)
+{
+    uint_fast8_t n;
+    int r;
+    uint_fast8_t t;
+
+    for (n = 0; n < TD_SD_NUM; n++) {
+        t = sd_init(n);
+        if (!(t & CT_BLOCK))
+            sd_shift[n] = 9;
+        if (t != CT_NONE) {
+            r = td_register(n, sd_xfer, td_ioctl_none, 1);
+            if (r < 0)
+                continue;
+        }
+    }
+    kputchar('\r');
+}
+#endif
+
 #endif

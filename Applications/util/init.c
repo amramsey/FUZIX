@@ -19,7 +19,6 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <pwd.h>
@@ -269,6 +268,8 @@ static void parse_initline(void)
 {
 	uint8_t bit = 0;
 	uint8_t *linelen;
+
+	ibackup = idata;
 
 	if (*sdata == '#') {
 		sdata = (uint8_t *)strchr((char *)sdata, '\n');
@@ -864,6 +865,9 @@ static pid_t getty(const char **argv, const char *id)
 			 * and a shell is spawned */
 
 			for (;;) {
+#if AUTOLOGIN
+				pwd = getpwnam("root");
+#else
 				putstr("login: ");
 				while (read(0, buf, 20) < 0);	/* EINTR might happens because of the alarm() call below */
 
@@ -874,6 +878,7 @@ static pid_t getty(const char **argv, const char *id)
 					continue;
 
 				pwd = getpwnam(buf);
+#endif
 
 				if (pwd == NULL || *pwd->pw_passwd)
 					p = getpass("Password: ");

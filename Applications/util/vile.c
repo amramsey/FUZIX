@@ -75,7 +75,7 @@ size_t strlcpy(char *dst, const char *src, size_t dstsize)
    really here so if it's useful to take useful bits from qe we can. It's
    also a good basis to pull out and use for other small apps */
 
-uint_fast8_t screenx, screeny, screen_height, screen_width;
+uint_fast8_t screenx = 255, screeny = 255, screen_height, screen_width;
 
 static char *t_go, *t_clreol, *t_clreos;
 static uint8_t conbuf[64];
@@ -214,7 +214,7 @@ void con_clear_to_eol(void)
 void con_clear_to_bottom(void)
 {
 	/* Most terminals have a clear to end of screen */
-	if (t_clreos)
+	if (t_clreos && 0)
 		con_twrite(t_clreos, screen_height);
 	/* If not then clear each line, which may in turn emit
 	   a lot of spaces in desperation */
@@ -415,7 +415,7 @@ int row, col;
    careful on comparisons */
 size_t indexp, page, epage;
 int input;
-int repeat;
+int repeat = -1;
 char *buf;
 char *ebuf;
 char *gap;
@@ -1309,7 +1309,10 @@ int zz(void)
 		dobeep();
 		return 0;
 	}
-	return save_done(filename, 1);
+	if (*filename)
+		return save_done(filename, 1);
+	else
+		warning("no filename");
 }
 
 int noop(void)
@@ -1387,7 +1390,7 @@ int colon_mode(void)
 	con_goto(screen_height - 1, 0);
 	con_putc(':');
 	con_clear_to_eol();
-	con_goto(screen_height - 1, 0);
+	con_goto(screen_height - 1, 1);
 
 	*bp = 0;
 	while (1) {
@@ -1462,8 +1465,8 @@ void dirty_below(void)
 void adjust_dirty(int n)
 {
 	if (n < 0) {
-		memmove(dirty, dirty - n, MAX_HEIGHT + n);
-		memset(dirty + MAX_HEIGHT - n, 0, -n);
+		memmove(dirty, dirty -  n, MAX_HEIGHT + n);
+		memset(dirty + MAX_HEIGHT + n, 0, -n);
 	} else if (n > 0) {
 		memmove(dirty + n, dirty, MAX_HEIGHT - n);
 		memset(dirty, 0, n);
@@ -1479,6 +1482,9 @@ void dirty_all(void)
 /*
  *	The main redisplay logic.
  */
+
+static unsigned tilde_start;	/* First line already set to ~ for end of doc */
+
 void display(int redraw)
 {
 	char *p;
@@ -1507,8 +1513,11 @@ void display(int redraw)
 	else
 		adjust_dirty(opage);
 
-	if (redraw)
+	if (redraw) {
+		dirtyn = 1;
 		dirty_all();
+		tilde_start = screen_height;
+	}
 
 	i = j = 0;
 	epage = page;
@@ -1575,15 +1584,17 @@ void display(int redraw)
 		*dirtyp = 255;
 	}
 	/* Now mark out the unused lines with ~ markers if needed */
-	while (++i < screen_height) {
-		if (*dirtyp != 255) {
-			*dirtyp = 255;
+	j = i + 1;
+	while (++i < tilde_start) {
+		if (*dirtyp) {
+			*dirtyp = 0;
 			con_goto(i, 0);
 			con_putc('~');
 			con_clear_to_eol();
 		}
 		dirtyp++;
 	}
+	tilde_start = j;
 	/* Put the cursor back where the user expects it to be */
 	con_goto(row, col);
 }
@@ -1674,7 +1685,7 @@ int main(int argc, char *argv[])
 		return (3);
 
 	con_goto(0,0);
-
+	
 	signal(SIGHUP, hupped);
 	do_goto();
 	display(1);

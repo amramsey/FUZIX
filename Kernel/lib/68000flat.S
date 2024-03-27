@@ -1,4 +1,4 @@
-#include "../kernel-68000.def"
+#include "../../cpu-68000/kernel-68000.def"
 
 
 .globl plt_switchout,switchin,dofork,udata_shadow
@@ -85,8 +85,7 @@ switchinfail:
 	; 4(sp) = child process table entry
 	;
 	; Exit:
-	; We are running as the child, A5 = u_data pointer of child, on
-	; child stack
+	; We are running as the parent but the child frame is built
 	;
 dofork:
 	move.l 4(sp),a0			;	child p_tab
@@ -167,7 +166,7 @@ pushret:
 	;
 	movem.l a0/a2-a4/a6/d2-d7,-(a1)
 	move.l a1,U_DATA__U_SP(a2)	; Set the stack pointer
-
+	clr.b U_DATA__U_INSYS(a2)	; set child not in a syscall
 	; And carry on as the parent
 	move.w (sp)+,d0		; child pid
 	move.l (sp)+,a2
